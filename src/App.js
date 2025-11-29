@@ -131,7 +131,8 @@ const slugify = (text) => {
     .replace(/-+$/, "");
 };
 
-const compressImage = async (file) => {
+// 通用图片压缩函数：支持自定义最大宽度和质量
+const compressImage = async (file, maxWidth = 500, quality = 0.7) => {
   return new Promise((resolve) => {
     const reader = new FileReader();
     reader.readAsDataURL(file);
@@ -140,16 +141,22 @@ const compressImage = async (file) => {
       img.src = event.target.result;
       img.onload = () => {
         const canvas = document.createElement("canvas");
-        const MAX_WIDTH = 500;
-        const scaleSize = MAX_WIDTH / img.width;
+        // 如果原图比限制宽度小，就不放大，保持原样
+        let targetWidth = img.width;
+        let targetHeight = img.height;
 
-        if (scaleSize >= 1) {
+        if (img.width > maxWidth) {
+          const scaleSize = maxWidth / img.width;
+          targetWidth = maxWidth;
+          targetHeight = img.height * scaleSize;
+        } else {
+          // 小图不压缩，直接返回
           resolve(null);
           return;
         }
 
-        canvas.width = MAX_WIDTH;
-        canvas.height = img.height * scaleSize;
+        canvas.width = targetWidth;
+        canvas.height = targetHeight;
 
         const ctx = canvas.getContext("2d");
         ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
@@ -158,7 +165,7 @@ const compressImage = async (file) => {
           (blob) => {
             if (blob) {
               resolve(
-                new File([blob], "thumb_" + file.name, {
+                new File([blob], "optimized_" + file.name, {
                   type: "image/jpeg",
                   lastModified: Date.now(),
                 })
@@ -168,7 +175,7 @@ const compressImage = async (file) => {
             }
           },
           "image/jpeg",
-          0.7
+          quality
         );
       };
       img.onerror = () => resolve(null);
@@ -212,9 +219,9 @@ const DEFAULT_SLIDES = [
 const DEFAULT_PROFILE = {
   brandName: "T8DAYS",
   logoUrl: "",
-  faviconUrl: "", // New: Favicon
-  siteTitle: "T8DAYS Photography", // New: Browser Title
-  siteDescription: "A photography portfolio.", // New: Meta Description
+  faviconUrl: "",
+  siteTitle: "T8DAYS Photography",
+  siteDescription: "A photography portfolio.",
   email: "contact@t8days.com",
   location: "Bangkok",
   heroImage:
@@ -251,10 +258,7 @@ const DEFAULT_SETTINGS = {
 // Meta Updater Component
 const MetaUpdater = ({ profile }) => {
   useEffect(() => {
-    // Update Title
     if (profile.siteTitle) document.title = profile.siteTitle;
-
-    // Update Favicon
     let link = document.querySelector("link[rel~='icon']");
     if (!link) {
       link = document.createElement("link");
@@ -262,8 +266,6 @@ const MetaUpdater = ({ profile }) => {
       document.head.appendChild(link);
     }
     link.href = profile.faviconUrl || "/favicon.ico";
-
-    // Update Description
     let meta = document.querySelector("meta[name='description']");
     if (!meta) {
       meta = document.createElement("meta");
@@ -345,7 +347,6 @@ const GlobalNav = ({
           )}
         </div>
 
-        {/* Desktop Nav */}
         <div className="hidden md:flex items-center gap-12">
           <div className="flex gap-8 text-xs font-bold tracking-[0.15em] uppercase text-neutral-400 font-sans">
             <button
@@ -397,7 +398,6 @@ const GlobalNav = ({
           </div>
         </div>
 
-        {/* Mobile Menu Button */}
         <div className="md:hidden flex items-center gap-4">
           <button
             onClick={() =>
@@ -416,7 +416,6 @@ const GlobalNav = ({
         </div>
       </nav>
 
-      {/* Mobile Menu Overlay */}
       {mobileMenuOpen && (
         <div className="fixed inset-0 z-40 bg-black/95 backdrop-blur-xl flex flex-col items-center justify-center animate-fade-in-up">
           <div className="flex flex-col gap-12 text-4xl font-thin text-white tracking-widest items-center font-serif">
@@ -443,6 +442,16 @@ const GlobalNav = ({
 
 const HeroSlideshow = ({ slides, onIndexChange, onLinkClick }) => {
   const [currentIndex, setCurrentIndex] = useState(0);
+
+  // 预加载下一张图片
+  useEffect(() => {
+    if (slides.length > 1) {
+      const nextIndex = (currentIndex + 1) % slides.length;
+      const img = new Image();
+      img.src = slides[nextIndex].url;
+    }
+  }, [currentIndex, slides]);
+
   useEffect(() => {
     if (!slides || slides.length === 0) return;
     const interval = setInterval(() => {
@@ -457,48 +466,60 @@ const HeroSlideshow = ({ slides, onIndexChange, onLinkClick }) => {
 
   if (!slides || slides.length === 0) return null;
 
-  const currentSlide = slides[currentIndex];
-
-  const handleSlideClick = () => {
-    if (currentSlide.link) {
+  const handleSlideClick = (slide) => {
+    if (slide.link) {
       if (onLinkClick) {
-        onLinkClick(currentSlide.link);
+        onLinkClick(slide.link);
       } else {
-        window.open(currentSlide.link, "_blank");
+        window.open(slide.link, "_blank");
       }
     }
   };
 
   return (
-    <div
-      className="absolute inset-0 w-full h-full bg-neutral-900 cursor-pointer"
-      onClick={handleSlideClick}
-    >
-      {slides.map((slide, index) => (
-        <div
-          key={index}
-          className={`absolute inset-0 w-full h-full transition-opacity duration-[2000ms] ease-in-out ${
-            index === currentIndex ? "opacity-100" : "opacity-0"
-          }`}
-        >
-          {slide.type === "video" ? (
-            <video
-              src={slide.url}
-              autoPlay
-              muted
-              loop
-              playsInline
-              className="w-full h-full object-cover"
-            />
-          ) : (
-            <div
-              className="w-full h-full bg-cover bg-center transform transition-transform duration-[10000ms] hover:scale-105"
-              style={{ backgroundImage: `url("${slide.url}")` }}
-            />
-          )}
-          <div className="absolute inset-0 bg-gradient-to-b from-black/30 via-transparent to-black/70" />
-        </div>
-      ))}
+    <div className="absolute inset-0 w-full h-full bg-neutral-900 overflow-hidden">
+      {slides.map((slide, index) => {
+        const isActive = index === currentIndex;
+        return (
+          <div
+            key={index}
+            onClick={() => isActive && handleSlideClick(slide)}
+            className={`absolute inset-0 w-full h-full transition-opacity duration-[2000ms] ease-in-out ${
+              isActive
+                ? "opacity-100 z-10 cursor-pointer"
+                : "opacity-0 z-0 pointer-events-none"
+            }`}
+          >
+            {slide.type === "video" ? (
+              <video
+                src={slide.url}
+                autoPlay
+                muted
+                loop
+                playsInline
+                className="w-full h-full object-cover"
+              />
+            ) : (
+              <div className="relative w-full h-full">
+                {/* 优化核心：使用原生 img 标签替代背景图，启用 fetchPriority */}
+                <img
+                  src={slide.url}
+                  alt={slide.title}
+                  className="w-full h-full object-cover"
+                  style={{
+                    transform: isActive ? "scale(1.05)" : "scale(1)",
+                    transition: "transform 10s ease-out",
+                  }}
+                  fetchPriority={index === 0 ? "high" : "auto"}
+                  loading={index === 0 ? "eager" : "lazy"}
+                  decoding="async"
+                />
+                <div className="absolute inset-0 bg-gradient-to-b from-black/30 via-transparent to-black/70 pointer-events-none" />
+              </div>
+            )}
+          </div>
+        );
+      })}
     </div>
   );
 };
@@ -513,8 +534,8 @@ const AboutPage = ({ profile, lang, onClose }) => {
       <div className="min-h-screen flex flex-col">
         <div className="flex-1 container mx-auto px-6 md:px-12 pt-32 pb-12 max-w-5xl">
           <div className="flex flex-col md:flex-row gap-12 md:gap-16 items-start">
-            <div className="w-full md:w-5/12 sticky top-32">
-              <div className="aspect-[4/5] bg-neutral-900 overflow-hidden grayscale hover:grayscale-0 transition-all duration-1000 ease-out shadow-2xl">
+            <div className="w-full md:w-5/12 md:sticky md:top-32 relative">
+              <div className="aspect-[3/4] md:aspect-[4/5] bg-neutral-900 overflow-hidden grayscale hover:grayscale-0 transition-all duration-1000 ease-out shadow-2xl">
                 <img
                   src={profile.heroImage}
                   alt="Profile"
@@ -599,7 +620,18 @@ const ImmersiveLightbox = ({
 }) => {
   const [currentIndex, setCurrentIndex] = useState(initialIndex);
   const [showSplash, setShowSplash] = useState(true);
+  const [loading, setLoading] = useState(true);
   const currentImage = images[currentIndex];
+
+  // 预加载下一张图片
+  useEffect(() => {
+    if (images.length > 1) {
+      const nextIndex = (currentIndex + 1) % images.length;
+      const img = new Image();
+      img.src = images[nextIndex].url;
+    }
+    setLoading(true);
+  }, [currentIndex, images]);
 
   const changeImage = (direction) => {
     let nextIndex;
@@ -633,7 +665,6 @@ const ImmersiveLightbox = ({
 
   return (
     <div className="fixed inset-0 z-[100] bg-black flex items-center justify-center animate-fade-in">
-      {/* Splash - Only show project title */}
       <div
         className={`absolute inset-0 z-[110] bg-black flex items-center justify-center pointer-events-none transition-opacity duration-1000 ${
           showSplash ? "opacity-100" : "opacity-0"
@@ -643,27 +674,35 @@ const ImmersiveLightbox = ({
           {currentImage.project}
         </h2>
       </div>
+
       <button
         onClick={onClose}
         className="absolute top-6 right-6 z-50 text-neutral-500 hover:text-white transition-colors p-4"
       >
         <X className="w-6 h-6" />
       </button>
+
       <div
-        className="absolute top-0 left-0 w-1/3 h-full z-20 cursor-w-resize"
-        onClick={() => changeImage("prev")}
-      />
-      <div
-        className="absolute top-0 right-0 w-1/3 h-full z-20 cursor-e-resize"
+        className="absolute inset-0 z-20"
         onClick={() => changeImage("next")}
       />
+
       <div className="relative z-10 w-full h-full flex items-center justify-center p-4 pointer-events-none">
+        {loading && (
+          <div className="absolute inset-0 flex items-center justify-center">
+            <Loader2 className="w-8 h-8 text-white/20 animate-spin" />
+          </div>
+        )}
         <img
           src={currentImage.url}
           alt="Photo"
-          className={`${imgClassName} object-contain shadow-2xl transition-opacity duration-300`}
+          className={`${imgClassName} object-contain shadow-2xl transition-opacity duration-300 ${
+            loading ? "opacity-0" : "opacity-100"
+          }`}
+          onLoad={() => setLoading(false)}
         />
       </div>
+
       <div className="absolute bottom-8 left-8 z-30 pointer-events-none">
         <div className="bg-black/0 backdrop-blur-none p-4 rounded-sm">
           <div className="text-white/40 font-serif font-thin text-xs tracking-widest mb-1">
@@ -730,7 +769,6 @@ const ProjectRow = ({ projectTitle, photos, onImageClick }) => {
     if (animationRef.current) cancelAnimationFrame(animationRef.current);
   };
 
-  // On mobile, title is always visible in its own container
   const isProjectTitleVisible = showOverlay && window.innerWidth >= 768;
 
   return (
@@ -740,7 +778,6 @@ const ProjectRow = ({ projectTitle, photos, onImageClick }) => {
       onMouseLeave={handleMouseLeave}
       onMouseMove={handleMouseMove}
     >
-      {/* Mobile Title (Always Visible) */}
       <div className="md:hidden mb-2 px-1 flex items-center gap-2">
         <h3 className="text-lg font-serif text-white/90 tracking-widest uppercase">
           {projectTitle}
@@ -748,7 +785,6 @@ const ProjectRow = ({ projectTitle, photos, onImageClick }) => {
         <div className="h-[1px] flex-grow bg-white/10"></div>
       </div>
 
-      {/* Desktop Title (Overlay on hover) */}
       <div
         className={`hidden md:flex absolute inset-0 z-10 items-center justify-start pl-4 pointer-events-none transition-opacity duration-500 ease-out ${
           isProjectTitleVisible ? "opacity-100" : "opacity-0"
@@ -759,7 +795,10 @@ const ProjectRow = ({ projectTitle, photos, onImageClick }) => {
         </h3>
       </div>
 
-      {/* Image Scroll Container */}
+      <div className="md:hidden absolute right-0 top-0 bottom-8 w-12 bg-gradient-to-l from-black/50 to-transparent z-10 pointer-events-none flex items-center justify-center">
+        <ChevronRight className="text-white/50 animate-pulse" size={20} />
+      </div>
+
       <div
         ref={scrollContainerRef}
         className={`flex overflow-x-auto no-scrollbar gap-1 md:gap-1 transition-opacity duration-500 ease-out ${
@@ -773,7 +812,6 @@ const ProjectRow = ({ projectTitle, photos, onImageClick }) => {
             className="flex-shrink-0 aspect-square bg-neutral-900 overflow-hidden cursor-pointer w-[32vw] md:w-[9vw]"
             onClick={() => onImageClick(photo, photos)}
           >
-            {/* 优化核心：优先使用 thumbnailUrl，回退到 url */}
             <img
               src={photo.thumbnailUrl || photo.url}
               alt="Work"
@@ -813,14 +851,11 @@ const WorksPage = ({ photos, profile, ui, onImageClick }) => {
             key={year}
             className="mb-16 md:mb-12 flex flex-col md:flex-row gap-4 md:gap-8"
           >
-            {/* Year Label */}
             <div className="md:w-48 flex-shrink-0 sticky top-24 md:top-32 h-fit pointer-events-none z-10">
               <span className="text-4xl md:text-2xl font-serif font-thin text-white/30 md:text-white/50 tracking-widest block leading-none md:-ml-2 transition-all font-serif">
                 {year}
               </span>
             </div>
-
-            {/* Projects List */}
             <div className="flex-grow flex flex-col gap-8 overflow-hidden mt-4 md:mt-0">
               {Object.keys(groupedByYearAndProject[year]).map(
                 (projectTitle) => (
@@ -895,7 +930,6 @@ const ProfileSettings = ({ settings, onUpdate }) => {
 
   return (
     <div className="max-w-3xl mx-auto space-y-8 pb-12">
-      {/* Branding Section */}
       <div className="bg-neutral-900 p-6 rounded-xl border border-neutral-800 space-y-6">
         <h3 className="text-lg font-bold text-white flex items-center gap-2">
           <Globe2 className="w-5 h-5" /> Site Identity & Branding
@@ -1111,8 +1145,10 @@ const SlidesSettings = ({ settings, onUpdate }) => {
     if (!e.target.files[0]) return;
     setUploading(true);
     try {
+      // 轮播图也进行压缩，但尺寸大一些 (1920px)
+      const file = await compressImage(e.target.files[0], 1920, 0.85);
       const url = await uploadFileToStorage(
-        e.target.files[0],
+        file || e.target.files[0],
         `slides/slide_${Date.now()}`
       );
       setForm((prev) => ({ ...prev, url }));
@@ -1286,13 +1322,15 @@ const PhotosManager = ({
     try {
       const promises = Array.from(files).map(async (file, idx) => {
         const timestamp = Date.now();
-        const thumbnailFile = await compressImage(file);
+        // 1. 缩略图
+        const thumbnailFile = await compressImage(file, 500, 0.7);
         let thumbnailUrl = "";
         if (thumbnailFile) {
           const thumbPath = `photos/${uploadYear}/${uploadProject.trim()}/${timestamp}_${idx}_thumb.jpg`;
           thumbnailUrl = await uploadFileToStorage(thumbnailFile, thumbPath);
         }
 
+        // 2. 原图 (不压缩，保持高质量)
         const path = `photos/${uploadYear}/${uploadProject.trim()}/${timestamp}_${idx}`;
         const url = await uploadFileToStorage(file, path);
 
@@ -1323,7 +1361,7 @@ const PhotosManager = ({
     try {
       const promises = Array.from(projectFiles).map(async (file, idx) => {
         const timestamp = Date.now();
-        const thumbnailFile = await compressImage(file);
+        const thumbnailFile = await compressImage(file, 500, 0.7);
         let thumbnailUrl = "";
         if (thumbnailFile) {
           const thumbPath = `photos/${year}/${project}/${timestamp}_${idx}_thumb.jpg`;
