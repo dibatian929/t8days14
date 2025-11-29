@@ -102,7 +102,6 @@ try {
 
 const appId = typeof __app_id !== "undefined" ? __app_id : "default-app-id";
 
-// 安全的集合获取函数
 const getPublicCollection = (colName) => {
   if (!db) throw new Error("Database not initialized");
   return collection(db, "artifacts", appId, "public", "data", colName);
@@ -119,7 +118,6 @@ const uploadFileToStorage = async (file, path) => {
   return await getDownloadURL(snapshot.ref);
 };
 
-// 辅助函数：生成 slug
 const slugify = (text) => {
   return text
     .toString()
@@ -131,7 +129,6 @@ const slugify = (text) => {
     .replace(/-+$/, "");
 };
 
-// 辅助函数：前端压缩图片生成缩略图
 const compressImage = async (file) => {
   return new Promise((resolve) => {
     const reader = new FileReader();
@@ -141,10 +138,9 @@ const compressImage = async (file) => {
       img.src = event.target.result;
       img.onload = () => {
         const canvas = document.createElement("canvas");
-        const MAX_WIDTH = 500; // 缩略图宽度限制为 500px
+        const MAX_WIDTH = 500;
         const scaleSize = MAX_WIDTH / img.width;
 
-        // 如果原图比缩略图还小，就不压缩
         if (scaleSize >= 1) {
           resolve(null);
           return;
@@ -171,7 +167,7 @@ const compressImage = async (file) => {
           },
           "image/jpeg",
           0.7
-        ); // 70% 质量的 JPEG
+        );
       };
       img.onerror = () => resolve(null);
     };
@@ -245,7 +241,7 @@ const DEFAULT_SETTINGS = {
   profile: DEFAULT_PROFILE,
 };
 
-// --- 2. 基础组件 (Modal, Nav) ---
+// --- 2. 基础组件 ---
 
 const LoginModal = ({ isOpen, onClose, onLogin }) => {
   const [passcode, setPasscode] = useState("");
@@ -296,7 +292,7 @@ const GlobalNav = ({
   const [langDropdownOpen, setLangDropdownOpen] = useState(false);
   return (
     <>
-      <nav className="fixed top-0 left-0 right-0 z-50 py-8 px-6 md:px-12 flex justify-between items-center transition-all duration-500 bg-gradient-to-b from-neutral-950/80 to-transparent backdrop-blur-[2px]">
+      <nav className="fixed top-0 left-0 right-0 z-50 py-6 md:py-8 px-6 md:px-12 flex justify-between items-center transition-all duration-500 bg-gradient-to-b from-neutral-950/80 to-transparent backdrop-blur-[2px]">
         <div
           className="cursor-pointer flex items-center gap-2 hover:opacity-80 transition-opacity"
           onClick={() => onNavClick("home")}
@@ -316,6 +312,8 @@ const GlobalNav = ({
             </>
           )}
         </div>
+
+        {/* Desktop Nav */}
         <div className="hidden md:flex items-center gap-12">
           <div className="flex gap-8 text-xs font-bold tracking-[0.15em] uppercase text-neutral-400 font-sans">
             <button
@@ -366,6 +364,8 @@ const GlobalNav = ({
             </div>
           </div>
         </div>
+
+        {/* Mobile Menu Button */}
         <div className="md:hidden flex items-center gap-4">
           <button
             onClick={() =>
@@ -383,11 +383,23 @@ const GlobalNav = ({
           </button>
         </div>
       </nav>
+
+      {/* Mobile Menu Overlay */}
       {mobileMenuOpen && (
-        <div className="fixed inset-0 z-40 bg-neutral-950 flex flex-col items-center justify-center animate-fade-in-up">
-          <div className="flex flex-col gap-12 text-3xl font-thin text-white tracking-widest items-center font-serif">
-            <button onClick={() => onNavClick("works")}>{ui.works}</button>
-            <button onClick={() => onNavClick("about")}>{ui.about}</button>
+        <div className="fixed inset-0 z-40 bg-black/95 backdrop-blur-xl flex flex-col items-center justify-center animate-fade-in-up">
+          <div className="flex flex-col gap-12 text-4xl font-thin text-white tracking-widest items-center font-serif">
+            <button
+              onClick={() => onNavClick("works")}
+              className="hover:text-neutral-400 transition-colors"
+            >
+              {ui.works}
+            </button>
+            <button
+              onClick={() => onNavClick("about")}
+              className="hover:text-neutral-400 transition-colors"
+            >
+              {ui.about}
+            </button>
           </div>
         </div>
       )}
@@ -468,7 +480,7 @@ const AboutPage = ({ profile, lang, onClose }) => {
     <div className="fixed inset-0 z-30 bg-neutral-950 overflow-y-auto animate-fade-in-up no-scrollbar">
       <div className="min-h-screen flex flex-col">
         <div className="flex-1 container mx-auto px-6 md:px-12 pt-32 pb-12 max-w-5xl">
-          <div className="flex flex-col md:flex-row gap-16 items-start">
+          <div className="flex flex-col md:flex-row gap-12 md:gap-16 items-start">
             <div className="w-full md:w-5/12 sticky top-32">
               <div className="aspect-[4/5] bg-neutral-900 overflow-hidden grayscale hover:grayscale-0 transition-all duration-1000 ease-out shadow-2xl">
                 <img
@@ -479,14 +491,14 @@ const AboutPage = ({ profile, lang, onClose }) => {
               </div>
             </div>
             <div className="w-full md:w-7/12 pt-4">
-              <h1 className="text-3xl md:text-5xl font-thin text-white mb-12 leading-tight font-serif">
+              <h1 className="text-3xl md:text-5xl font-thin text-white mb-8 md:mb-12 leading-tight font-serif">
                 {content.title}
               </h1>
-              <div className="prose prose-invert prose-lg max-w-none text-neutral-400 font-light leading-relaxed space-y-8 whitespace-pre-line text-sm md:text-base font-sans">
+              <div className="prose prose-invert prose-lg max-w-none text-neutral-400 font-light leading-relaxed space-y-6 md:space-y-8 whitespace-pre-line text-sm md:text-base font-sans">
                 {content.aboutText}
               </div>
               <div
-                className="mt-24 pt-12 border-t border-neutral-900 grid grid-cols-1 gap-8"
+                className="mt-16 md:mt-24 pt-12 border-t border-neutral-900 grid grid-cols-1 gap-8"
                 id="contact-info"
               >
                 <div>
@@ -538,7 +550,7 @@ const AboutPage = ({ profile, lang, onClose }) => {
         </div>
         <button
           onClick={onClose}
-          className="absolute top-6 right-6 z-50 text-neutral-500 hover:text-white transition-colors p-4"
+          className="fixed top-6 right-6 z-50 text-neutral-500 hover:text-white transition-colors p-4"
         >
           <X className="w-6 h-6" />
         </button>
@@ -595,7 +607,7 @@ const ImmersiveLightbox = ({
           showSplash ? "opacity-100" : "opacity-0"
         }`}
       >
-        <h2 className="text-2xl font-serif text-white tracking-[0.5em] uppercase">
+        <h2 className="text-2xl font-serif text-white tracking-[0.5em] uppercase text-center px-4">
           {currentImage.project}
         </h2>
       </div>
@@ -686,15 +698,25 @@ const ProjectRow = ({ projectTitle, photos, onImageClick }) => {
     if (animationRef.current) cancelAnimationFrame(animationRef.current);
   };
 
+  // On mobile, title is always visible in its own container
   const isProjectTitleVisible = showOverlay && window.innerWidth >= 768;
 
   return (
     <div
-      className="relative group/row mb-8 transition-all duration-1000"
+      className="relative group/row mb-8 md:mb-12 transition-all duration-1000"
       onMouseEnter={handleMouseEnter}
       onMouseLeave={handleMouseLeave}
       onMouseMove={handleMouseMove}
     >
+      {/* Mobile Title (Always Visible) */}
+      <div className="md:hidden mb-2 px-1 flex items-center gap-2">
+        <h3 className="text-lg font-serif text-white/90 tracking-widest uppercase">
+          {projectTitle}
+        </h3>
+        <div className="h-[1px] flex-grow bg-white/10"></div>
+      </div>
+
+      {/* Desktop Title (Overlay on hover) */}
       <div
         className={`hidden md:flex absolute inset-0 z-10 items-center justify-start pl-4 pointer-events-none transition-opacity duration-500 ease-out ${
           isProjectTitleVisible ? "opacity-100" : "opacity-0"
@@ -704,17 +726,19 @@ const ProjectRow = ({ projectTitle, photos, onImageClick }) => {
           {projectTitle}
         </h3>
       </div>
+
+      {/* Image Scroll Container */}
       <div
         ref={scrollContainerRef}
-        className={`flex overflow-x-auto no-scrollbar gap-0.5 md:gap-1 transition-opacity duration-500 ease-out ${
+        className={`flex overflow-x-auto no-scrollbar gap-1 md:gap-1 transition-opacity duration-500 ease-out ${
           isProjectTitleVisible ? "opacity-30" : "opacity-100"
         }`}
-        style={{ scrollBehavior: "auto" }}
+        style={{ scrollBehavior: "auto", WebkitOverflowScrolling: "touch" }}
       >
         {photos.map((photo) => (
           <div
             key={photo.id}
-            className="flex-shrink-0 aspect-square bg-neutral-900 overflow-hidden cursor-pointer w-[28vw] md:w-[9vw]"
+            className="flex-shrink-0 aspect-square bg-neutral-900 overflow-hidden cursor-pointer w-[32vw] md:w-[9vw]"
             onClick={() => onImageClick(photo, photos)}
           >
             {/* 优化核心：优先使用 thumbnailUrl，回退到 url */}
@@ -751,18 +775,21 @@ const WorksPage = ({ photos, profile, ui, onImageClick }) => {
 
   return (
     <div className="min-h-screen bg-neutral-950 text-white animate-fade-in-up">
-      <div className="pt-32 pb-32 px-4 md:px-12 container mx-auto max-w-[1920px]">
+      <div className="pt-28 md:pt-32 pb-32 px-4 md:px-12 container mx-auto max-w-[1920px]">
         {sortedYears.map((year) => (
           <div
             key={year}
-            className="mb-12 flex flex-col md:flex-row gap-4 md:gap-8"
+            className="mb-16 md:mb-12 flex flex-col md:flex-row gap-4 md:gap-8"
           >
-            <div className="md:w-48 flex-shrink-0 sticky top-32 h-fit pointer-events-none">
-              <span className="text-2xl font-serif font-thin text-white/50 tracking-widest block leading-none -ml-2 transition-all font-serif">
+            {/* Year Label */}
+            <div className="md:w-48 flex-shrink-0 sticky top-24 md:top-32 h-fit pointer-events-none z-10">
+              <span className="text-4xl md:text-2xl font-serif font-thin text-white/30 md:text-white/50 tracking-widest block leading-none md:-ml-2 transition-all font-serif">
                 {year}
               </span>
             </div>
-            <div className="flex-grow flex flex-col gap-8 overflow-hidden">
+
+            {/* Projects List */}
+            <div className="flex-grow flex flex-col gap-8 overflow-hidden mt-4 md:mt-0">
               {Object.keys(groupedByYearAndProject[year]).map(
                 (projectTitle) => (
                   <ProjectRow
@@ -836,8 +863,8 @@ const ProfileSettings = ({ settings, onUpdate }) => {
 
   return (
     <div className="max-w-3xl mx-auto space-y-8 pb-12">
-      <div className="bg-neutral-900 p-6 rounded-xl border border-neutral-800 flex gap-8">
-        <div className="w-1/3">
+      <div className="bg-neutral-900 p-6 rounded-xl border border-neutral-800 flex flex-col md:flex-row gap-8">
+        <div className="w-full md:w-1/3">
           <label className="block relative group cursor-pointer">
             <div className="aspect-[4/5] bg-black rounded overflow-hidden border border-neutral-700">
               <img
@@ -862,7 +889,7 @@ const ProfileSettings = ({ settings, onUpdate }) => {
             </span>
           </label>
         </div>
-        <div className="w-2/3 space-y-4">
+        <div className="w-full md:w-2/3 space-y-4">
           <h3 className="text-lg font-bold text-white flex items-center gap-2">
             <User className="w-5 h-5" /> Basic Info
           </h3>
@@ -1488,6 +1515,7 @@ const AdminDashboard = ({
   const [tab, setTab] = useState("photos");
   return (
     <div className="min-h-screen bg-neutral-900 text-neutral-200 font-sans flex flex-col">
+      {/* Top Header for Admin */}
       <div className="h-16 border-b border-neutral-800 flex items-center justify-between px-6 bg-neutral-950">
         <h1 className="text-xl font-bold text-white flex items-center gap-2 font-serif">
           <Settings className="w-5 h-5" /> T8DAY CMS
@@ -1500,12 +1528,12 @@ const AdminDashboard = ({
         </button>
       </div>
 
-      <div className="flex flex-1 overflow-hidden">
-        <div className="w-64 border-r border-neutral-800 p-6 flex flex-col bg-neutral-950 flex-shrink-0">
-          <div className="space-y-1 mb-8">
+      <div className="flex flex-1 overflow-hidden flex-col md:flex-row">
+        <div className="w-full md:w-64 border-b md:border-b-0 md:border-r border-neutral-800 p-4 md:p-6 flex flex-col bg-neutral-950 flex-shrink-0">
+          <div className="flex md:flex-col gap-2 overflow-x-auto md:overflow-visible">
             <button
               onClick={() => setTab("photos")}
-              className={`w-full text-left px-3 py-2 rounded text-sm transition-colors ${
+              className={`flex-shrink-0 w-auto md:w-full text-left px-3 py-2 rounded text-sm transition-colors ${
                 tab === "photos"
                   ? "bg-white text-black font-bold"
                   : "text-neutral-500 hover:text-white"
@@ -1515,7 +1543,7 @@ const AdminDashboard = ({
             </button>
             <button
               onClick={() => setTab("slides")}
-              className={`w-full text-left px-3 py-2 rounded text-sm transition-colors ${
+              className={`flex-shrink-0 w-auto md:w-full text-left px-3 py-2 rounded text-sm transition-colors ${
                 tab === "slides"
                   ? "bg-white text-black font-bold"
                   : "text-neutral-500 hover:text-white"
@@ -1525,7 +1553,7 @@ const AdminDashboard = ({
             </button>
             <button
               onClick={() => setTab("profile")}
-              className={`w-full text-left px-3 py-2 rounded text-sm transition-colors ${
+              className={`flex-shrink-0 w-auto md:w-full text-left px-3 py-2 rounded text-sm transition-colors ${
                 tab === "profile"
                   ? "bg-white text-black font-bold"
                   : "text-neutral-500 hover:text-white"
@@ -1535,7 +1563,7 @@ const AdminDashboard = ({
             </button>
           </div>
         </div>
-        <div className="flex-1 p-8 overflow-y-auto">
+        <div className="flex-1 p-4 md:p-8 overflow-y-auto">
           {tab === "photos" && (
             <PhotosManager
               photos={photos}
@@ -1557,6 +1585,7 @@ const AdminDashboard = ({
 };
 
 const MainView = ({ photos, settings, onLoginClick, isOffline }) => {
+  // Helper to get initial state from URL
   const getInitialState = () => {
     const path = window.location.pathname;
     if (path === "/about") return { view: "home", showAbout: true };
@@ -1571,7 +1600,7 @@ const MainView = ({ photos, settings, onLoginClick, isOffline }) => {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [currentSlideIndex, setCurrentSlideIndex] = useState(0);
   const [lang, setLang] = useState("en");
-  const [lightboxImages, setLightboxImages] = useState([]);
+  const [lightboxImages, setLightboxImages] = useState([]); // Isolated images for lightbox
 
   const rawProfile = settings?.profile || {};
   const profile = {
@@ -1593,6 +1622,7 @@ const MainView = ({ photos, settings, onLoginClick, isOffline }) => {
     slides[currentSlideIndex]?.title || profile.brandName;
   const visiblePhotos = photos.filter((p) => p.isVisible !== false);
 
+  // Sync state with URL on popstate
   useEffect(() => {
     const handlePopState = () => {
       setState(getInitialState());
@@ -1601,14 +1631,17 @@ const MainView = ({ photos, settings, onLoginClick, isOffline }) => {
     return () => window.removeEventListener("popstate", handlePopState);
   }, []);
 
+  // Handle direct URL access to projects (e.g. /works/huahin-2024/01)
   useEffect(() => {
     if (visiblePhotos.length === 0) return;
 
     const pathParts = window.location.pathname.split("/").filter(Boolean);
+    // Expecting /works/project-slug/image-index
     if (pathParts.length >= 2 && pathParts[0] === "works") {
-      const projectSlug = pathParts[1];
-      const imageIndexStr = pathParts[2] || "01";
+      const projectSlug = pathParts[1]; // e.g. "huahin-2024"
+      const imageIndexStr = pathParts[2] || "01"; // Default to 01 if missing
 
+      // Find project photos matching slug
       const targetPhotos = visiblePhotos.filter((p) => {
         const pSlug = slugify(`${p.project} ${p.year}`);
         const pSlugSimple = slugify(p.project);
@@ -1616,9 +1649,11 @@ const MainView = ({ photos, settings, onLoginClick, isOffline }) => {
       });
 
       if (targetPhotos.length > 0) {
+        // Sort
         targetPhotos.sort((a, b) => (a.order || 999) - (b.order || 999));
 
-        const imageIndex = parseInt(imageIndexStr, 10) - 1;
+        // Find index
+        const imageIndex = parseInt(imageIndexStr, 10) - 1; // 1-based to 0-based
         const safeIndex = isNaN(imageIndex)
           ? 0
           : Math.max(0, Math.min(imageIndex, targetPhotos.length - 1));
@@ -1626,10 +1661,11 @@ const MainView = ({ photos, settings, onLoginClick, isOffline }) => {
         setLightboxImages(targetPhotos);
         setInitialLightboxIndex(safeIndex);
         setLightboxOpen(true);
+        // Ensure background is works
         setState({ view: "works", showAbout: false });
       }
     }
-  }, [visiblePhotos]);
+  }, [visiblePhotos]); // Run when photos loaded
 
   const navigate = (path, newView, newShowAbout) => {
     window.history.pushState({}, "", path);
@@ -1652,13 +1688,19 @@ const MainView = ({ photos, settings, onLoginClick, isOffline }) => {
   };
 
   const handleLinkNavigation = (link) => {
+    // Check if internal link by comparing origin
     try {
       const url = new URL(link, window.location.origin);
       if (url.origin === window.location.origin) {
+        // It's internal
         window.history.pushState({}, "", url.pathname);
+
+        // Trigger manual update
         const pathParts = url.pathname.split("/").filter(Boolean);
         if (pathParts[0] === "works") {
           setState({ view: "works", showAbout: false });
+
+          // Re-run the logic from useEffect for the new path
           const projectSlug = pathParts[1];
           if (projectSlug) {
             const targetPhotos = visiblePhotos.filter((p) => {
@@ -1698,6 +1740,7 @@ const MainView = ({ photos, settings, onLoginClick, isOffline }) => {
       setInitialLightboxIndex(index);
       setLightboxOpen(true);
 
+      // Update URL
       const slug = slugify(`${item.project} ${item.year}`);
       const newPath = `/works/${slug}/${(index + 1)
         .toString()
@@ -1707,6 +1750,7 @@ const MainView = ({ photos, settings, onLoginClick, isOffline }) => {
   };
 
   const handleLightboxIndexChange = (newIndex) => {
+    // Update URL without pushing history (replace)
     if (lightboxImages.length > 0) {
       const item = lightboxImages[newIndex];
       const slug = slugify(`${item.project} ${item.year}`);
