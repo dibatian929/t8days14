@@ -472,8 +472,11 @@ const ImmersiveLightbox = ({ initialIndex, images, onClose }) => {
 
   const changeImage = (direction) => {
     let nextIndex;
-    if (direction === "next") nextIndex = (currentIndex + 1) % images.length;
-    else nextIndex = (currentIndex - 1 + images.length) % images.length;
+    if (direction === "next") {
+      nextIndex = (currentIndex + 1) % images.length;
+    } else {
+      nextIndex = (currentIndex - 1 + images.length) % images.length;
+    }
     setCurrentIndex(nextIndex);
   };
 
@@ -498,13 +501,14 @@ const ImmersiveLightbox = ({ initialIndex, images, onClose }) => {
 
   return (
     <div className="fixed inset-0 z-[100] bg-black flex items-center justify-center animate-fade-in">
+      {/* Splash - Only show project title */}
       <div
         className={`absolute inset-0 z-[110] bg-black flex items-center justify-center pointer-events-none transition-opacity duration-1000 ${
           showSplash ? "opacity-100" : "opacity-0"
         }`}
       >
         <h2 className="text-2xl font-serif text-white tracking-[0.5em] uppercase">
-          {currentImage.project || currentImage.title}
+          {currentImage.project}
         </h2>
       </div>
       <button
@@ -524,7 +528,7 @@ const ImmersiveLightbox = ({ initialIndex, images, onClose }) => {
       <div className="relative z-10 w-full h-full flex items-center justify-center p-4 pointer-events-none">
         <img
           src={currentImage.url}
-          alt={currentImage.title}
+          alt="Photo"
           className={`${imgClassName} object-contain shadow-2xl transition-opacity duration-300`}
         />
       </div>
@@ -533,9 +537,7 @@ const ImmersiveLightbox = ({ initialIndex, images, onClose }) => {
           <div className="text-white/40 font-serif font-thin text-xs tracking-widest mb-1">
             {currentImage.year} — {currentImage.project}
           </div>
-          <div className="text-white text-xl font-serif tracking-wide">
-            {currentImage.title}
-          </div>
+          {/* Individual image title removed per request */}
         </div>
       </div>
       <div className="absolute bottom-8 right-8 z-30 text-white/30 font-mono text-xs tracking-widest pointer-events-none">
@@ -621,11 +623,11 @@ const ProjectRow = ({ projectTitle, photos, onImageClick }) => {
           <div
             key={photo.id}
             className="flex-shrink-0 aspect-square bg-neutral-900 overflow-hidden cursor-pointer w-[28vw] md:w-[9vw]"
-            onClick={() => onImageClick(photo)}
+            onClick={() => onImageClick(photo, photos)}
           >
             <img
               src={photo.url}
-              alt={photo.title}
+              alt="Work"
               loading="lazy"
               decoding="async"
               className="w-full h-full object-cover transition-transform duration-700 ease-out hover:scale-110"
@@ -1008,15 +1010,27 @@ const SlidesSettings = ({ settings, onUpdate }) => {
 };
 
 // 4.3 照片管理
-const PhotosManager = ({ photos, onAddPhoto, onDeletePhoto }) => {
+const PhotosManager = ({
+  photos,
+  onAddPhoto,
+  onDeletePhoto,
+  onBatchUpdate,
+}) => {
   const [uploading, setUploading] = useState(false);
   const [files, setFiles] = useState([]);
   const [uploadYear, setUploadYear] = useState(
     new Date().getFullYear().toString()
   );
   const [uploadProject, setUploadProject] = useState("");
+  // Local state for dragging
+  const [localPhotos, setLocalPhotos] = useState(photos);
 
-  const grouped = photos.reduce((acc, p) => {
+  useEffect(() => {
+    // Sync when props change, but only if we are not dragging? For simplicity sync always for now
+    setLocalPhotos(photos);
+  }, [photos]);
+
+  const grouped = localPhotos.reduce((acc, p) => {
     const y = p.year ? String(p.year).trim() : "Unsorted";
     const proj = p.project ? String(p.project).trim() : "Uncategorized";
     if (!acc[y]) acc[y] = {};
@@ -1042,7 +1056,7 @@ const PhotosManager = ({ photos, onAddPhoto, onDeletePhoto }) => {
           year: uploadYear.trim(),
           project: uploadProject.trim(),
           url: url,
-          order: 9999,
+          order: 9999, // New items at end
           isVisible: true,
         });
       });
@@ -1053,6 +1067,64 @@ const PhotosManager = ({ photos, onAddPhoto, onDeletePhoto }) => {
       alert(e.message);
     }
     setUploading(false);
+  };
+
+  const handleRenameProject = async (oldName, year) => {
+    const newName = prompt(`Rename project "${oldName}" to:`, oldName);
+    if (!newName || newName === oldName) return;
+
+    // Find all photos in this group
+    const photosToUpdate = photos.filter(
+      (p) =>
+        (p.year === year || (!p.year && year === "Unsorted")) &&
+        (p.project === oldName || (!p.project && oldName === "Uncategorized"))
+    );
+
+    if (confirm(`Update ${photosToUpdate.length} photos to "${newName}"?`)) {
+      onBatchUpdate(
+        photosToUpdate.map((p) => ({ id: p.id, project: newName }))
+      );
+    }
+  };
+
+  // Drag Sorting Logic
+  const [draggedItem, setDraggedItem] = useState(null);
+
+  const onDragStart = (e, item) => {
+    setDraggedItem(item);
+  };
+
+  const onDragOver = (e, targetItem) => {
+    e.preventDefault();
+    if (!draggedItem || draggedItem.id === targetItem.id) return;
+
+    // Check if in same project group to avoid confusion
+    if (
+      draggedItem.project !== targetItem.project ||
+      draggedItem.year !== targetItem.year
+    )
+      return;
+
+    // Reorder local state
+    const items = [...localPhotos];
+    const fromIndex = items.findIndex((i) => i.id === draggedItem.id);
+    const toIndex = items.findIndex((i) => i.id === targetItem.id);
+
+    if (fromIndex < 0 || toIndex < 0) return;
+
+    items.splice(fromIndex, 1);
+    items.splice(toIndex, 0, draggedItem);
+    setLocalPhotos(items);
+  };
+
+  const handleSaveOrder = () => {
+    // Update all order fields based on current index
+    const updates = localPhotos.map((p, index) => ({
+      id: p.id,
+      order: index + 1,
+    }));
+    onBatchUpdate(updates);
+    alert("Order saved!");
   };
 
   return (
@@ -1110,6 +1182,14 @@ const PhotosManager = ({ photos, onAddPhoto, onDeletePhoto }) => {
       </div>
 
       <div className="space-y-12 pb-24">
+        <div className="flex justify-end">
+          <button
+            onClick={handleSaveOrder}
+            className="bg-white text-black px-4 py-2 rounded font-bold text-sm hover:bg-neutral-200"
+          >
+            Save Order
+          </button>
+        </div>
         {Object.keys(grouped)
           .sort((a, b) => b - a)
           .map((year) => (
@@ -1122,14 +1202,25 @@ const PhotosManager = ({ photos, onAddPhoto, onDeletePhoto }) => {
                   key={proj}
                   className="bg-neutral-900/30 p-6 rounded-xl border border-neutral-800"
                 >
-                  <h5 className="text-white font-bold mb-4 flex items-center gap-2">
-                    <FolderOpen size={16} /> {proj}
-                  </h5>
+                  <div className="flex items-center gap-2 mb-4">
+                    <h5 className="text-white font-bold flex items-center gap-2">
+                      <FolderOpen size={16} /> {proj}
+                    </h5>
+                    <button
+                      onClick={() => handleRenameProject(proj, year)}
+                      className="text-neutral-500 hover:text-white p-1 rounded"
+                    >
+                      <Edit2 size={14} />
+                    </button>
+                  </div>
                   <div className="grid grid-cols-4 md:grid-cols-6 lg:grid-cols-8 gap-4">
                     {grouped[year][proj].map((p) => (
                       <div
                         key={p.id}
-                        className="aspect-square relative group bg-black rounded border border-neutral-700 overflow-hidden"
+                        draggable
+                        onDragStart={(e) => onDragStart(e, p)}
+                        onDragOver={(e) => onDragOver(e, p)}
+                        className="aspect-square relative group bg-black rounded border border-neutral-700 overflow-hidden cursor-move"
                       >
                         <img
                           src={p.url}
@@ -1162,67 +1253,75 @@ const AdminDashboard = ({
   onAddPhoto,
   onDeletePhoto,
   onUpdateSettings,
+  onBatchUpdate,
 }) => {
   const [tab, setTab] = useState("photos");
   return (
-    <div className="min-h-screen bg-neutral-900 text-neutral-200 font-sans flex">
-      <div className="w-64 border-r border-neutral-800 p-6 flex flex-col bg-neutral-950 flex-shrink-0">
-        <h1 className="text-xl font-bold text-white mb-8 flex items-center gap-2 font-serif">
+    <div className="min-h-screen bg-neutral-900 text-neutral-200 font-sans flex flex-col">
+      {/* Top Header for Admin */}
+      <div className="h-16 border-b border-neutral-800 flex items-center justify-between px-6 bg-neutral-950">
+        <h1 className="text-xl font-bold text-white flex items-center gap-2 font-serif">
           <Settings className="w-5 h-5" /> T8DAY CMS
         </h1>
-        <div className="space-y-1 mb-8">
-          <button
-            onClick={() => setTab("photos")}
-            className={`w-full text-left px-3 py-2 rounded text-sm transition-colors ${
-              tab === "photos"
-                ? "bg-white text-black font-bold"
-                : "text-neutral-500 hover:text-white"
-            }`}
-          >
-            Photos & Projects
-          </button>
-          <button
-            onClick={() => setTab("slides")}
-            className={`w-full text-left px-3 py-2 rounded text-sm transition-colors ${
-              tab === "slides"
-                ? "bg-white text-black font-bold"
-                : "text-neutral-500 hover:text-white"
-            }`}
-          >
-            Hero Slides
-          </button>
-          <button
-            onClick={() => setTab("profile")}
-            className={`w-full text-left px-3 py-2 rounded text-sm transition-colors ${
-              tab === "profile"
-                ? "bg-white text-black font-bold"
-                : "text-neutral-500 hover:text-white"
-            }`}
-          >
-            Profile & Settings
-          </button>
-        </div>
         <button
           onClick={onLogout}
-          className="mt-auto flex items-center gap-2 text-red-500 hover:text-red-400 text-sm"
+          className="flex items-center gap-2 text-red-500 hover:text-red-400 text-sm font-bold bg-neutral-900 px-4 py-2 rounded"
         >
           <LogOut className="w-4 h-4" /> Logout
         </button>
       </div>
-      <div className="flex-1 p-8 overflow-y-auto">
-        {tab === "photos" && (
-          <PhotosManager
-            photos={photos}
-            onAddPhoto={onAddPhoto}
-            onDeletePhoto={onDeletePhoto}
-          />
-        )}
-        {tab === "slides" && (
-          <SlidesSettings settings={settings} onUpdate={onUpdateSettings} />
-        )}
-        {tab === "profile" && (
-          <ProfileSettings settings={settings} onUpdate={onUpdateSettings} />
-        )}
+
+      <div className="flex flex-1 overflow-hidden">
+        <div className="w-64 border-r border-neutral-800 p-6 flex flex-col bg-neutral-950 flex-shrink-0">
+          <div className="space-y-1 mb-8">
+            <button
+              onClick={() => setTab("photos")}
+              className={`w-full text-left px-3 py-2 rounded text-sm transition-colors ${
+                tab === "photos"
+                  ? "bg-white text-black font-bold"
+                  : "text-neutral-500 hover:text-white"
+              }`}
+            >
+              Photos & Projects
+            </button>
+            <button
+              onClick={() => setTab("slides")}
+              className={`w-full text-left px-3 py-2 rounded text-sm transition-colors ${
+                tab === "slides"
+                  ? "bg-white text-black font-bold"
+                  : "text-neutral-500 hover:text-white"
+              }`}
+            >
+              Hero Slides
+            </button>
+            <button
+              onClick={() => setTab("profile")}
+              className={`w-full text-left px-3 py-2 rounded text-sm transition-colors ${
+                tab === "profile"
+                  ? "bg-white text-black font-bold"
+                  : "text-neutral-500 hover:text-white"
+              }`}
+            >
+              Profile & Settings
+            </button>
+          </div>
+        </div>
+        <div className="flex-1 p-8 overflow-y-auto">
+          {tab === "photos" && (
+            <PhotosManager
+              photos={photos}
+              onAddPhoto={onAddPhoto}
+              onDeletePhoto={onDeletePhoto}
+              onBatchUpdate={onBatchUpdate}
+            />
+          )}
+          {tab === "slides" && (
+            <SlidesSettings settings={settings} onUpdate={onUpdateSettings} />
+          )}
+          {tab === "profile" && (
+            <ProfileSettings settings={settings} onUpdate={onUpdateSettings} />
+          )}
+        </div>
       </div>
     </div>
   );
@@ -1236,6 +1335,7 @@ const MainView = ({ photos, settings, onLoginClick, isOffline }) => {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [currentSlideIndex, setCurrentSlideIndex] = useState(0);
   const [lang, setLang] = useState("en");
+  const [lightboxImages, setLightboxImages] = useState([]); // Isolated images for lightbox
 
   const rawProfile = settings?.profile || {};
   const profile = {
@@ -1270,9 +1370,11 @@ const MainView = ({ photos, settings, onLoginClick, isOffline }) => {
     }
   };
 
-  const handleImageClick = (item) => {
-    const index = visiblePhotos.findIndex((p) => p.id === item.id);
+  const handleImageClick = (item, projectPhotos) => {
+    // Set the context to ONLY the photos in this project
+    const index = projectPhotos.findIndex((p) => p.id === item.id);
     if (index !== -1) {
+      setLightboxImages(projectPhotos);
       setInitialLightboxIndex(index);
       setLightboxOpen(true);
     }
@@ -1341,7 +1443,7 @@ const MainView = ({ photos, settings, onLoginClick, isOffline }) => {
       {lightboxOpen && (
         <ImmersiveLightbox
           initialIndex={initialLightboxIndex}
-          images={visiblePhotos}
+          images={lightboxImages}
           onClose={() => setLightboxOpen(false)}
         />
       )}
@@ -1394,7 +1496,7 @@ const AppContent = () => {
         if (prev) {
           console.warn("Loading timed out, switching to offline mode");
           setIsOffline(true);
-          setPhotos([]); // Start with empty if timed out
+          setPhotos([]);
           return false;
         }
         return prev;
@@ -1476,6 +1578,21 @@ const AppContent = () => {
   const handleUpdateSettings = async (s) =>
     await setDoc(getPublicDoc("settings", "global"), s, { merge: true });
 
+  // New batch update function for renaming and reordering
+  const handleBatchUpdate = async (updates) => {
+    // In a real app we'd use a batch, here we map promises for simplicity in this environment
+    try {
+      const promises = updates.map((u) => {
+        const { id, ...data } = u;
+        return updateDoc(getPublicDoc("photos", id), data);
+      });
+      await Promise.all(promises);
+    } catch (e) {
+      console.error("Batch update failed:", e);
+      alert("Update failed: " + e.message);
+    }
+  };
+
   if (isLoading)
     return (
       <div className="min-h-screen bg-neutral-950 flex flex-col items-center justify-center text-neutral-500">
@@ -1512,6 +1629,7 @@ const AppContent = () => {
           onAddPhoto={handleAddPhoto}
           onDeletePhoto={handleDeletePhoto}
           onUpdateSettings={handleUpdateSettings}
+          onBatchUpdate={handleBatchUpdate}
         />
       )}
       <LoginModal
