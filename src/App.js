@@ -336,7 +336,7 @@ const GlobalNav = ({
             onMouseEnter={() => setLangDropdownOpen(true)}
             onMouseLeave={() => setLangDropdownOpen(false)}
           >
-            <button className="flex items-center gap-1 text-[10px] font-bold text-neutral-600 hover:text-white uppercase tracking-widest transition-colors">
+            <button className="flex items-center gap-1 text-[10px] font-bold text-neutral-400 hover:text-white uppercase tracking-widest transition-colors">
               <Globe className="w-3 h-3 mr-1" /> {ui.language}{" "}
               <ChevronDown className="w-3 h-3" />
             </button>
