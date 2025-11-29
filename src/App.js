@@ -104,7 +104,6 @@ try {
 
 const appId = typeof __app_id !== "undefined" ? __app_id : "default-app-id";
 
-// 安全的集合获取函数
 const getPublicCollection = (colName) => {
   if (!db) throw new Error("Database not initialized");
   return collection(db, "artifacts", appId, "public", "data", colName);
@@ -132,7 +131,6 @@ const slugify = (text) => {
     .replace(/-+$/, "");
 };
 
-// 通用图片压缩函数
 const compressImage = async (file, maxWidth = 500, quality = 0.7) => {
   return new Promise((resolve) => {
     const reader = new FileReader();
@@ -478,6 +476,20 @@ const HeroSlideshow = ({ slides, onIndexChange, onLinkClick }) => {
 
   return (
     <div className="absolute inset-0 w-full h-full bg-neutral-900 overflow-hidden">
+      {/* Gooey Filter Definition */}
+      <svg style={{ position: "absolute", width: 0, height: 0 }}>
+        <filter id="goo">
+          <feGaussianBlur in="SourceGraphic" stdDeviation="8" result="blur" />
+          <feColorMatrix
+            in="blur"
+            mode="matrix"
+            values="1 0 0 0 0  0 1 0 0 0  0 0 1 0 0  0 0 0 20 -9"
+            result="goo"
+          />
+          <feComposite in="SourceGraphic" in2="goo" operator="atop" />
+        </filter>
+      </svg>
+
       {slides.map((slide, index) => {
         const isActive = index === currentIndex;
         return (
@@ -501,14 +513,11 @@ const HeroSlideshow = ({ slides, onIndexChange, onLinkClick }) => {
               />
             ) : (
               <div className="relative w-full h-full">
+                {/* 原图保持静止，不添加 scale 特效 */}
                 <img
                   src={slide.url}
                   alt={slide.title}
                   className="w-full h-full object-cover"
-                  style={{
-                    transform: isActive ? "scale(1.05)" : "scale(1)",
-                    transition: "transform 10s ease-out",
-                  }}
                   fetchPriority={index === 0 ? "high" : "auto"}
                   loading={index === 0 ? "eager" : "lazy"}
                   decoding="async"
@@ -520,29 +529,43 @@ const HeroSlideshow = ({ slides, onIndexChange, onLinkClick }) => {
         );
       })}
 
-      {/* Water Drop Indicator */}
+      {/* Water Drop (Gooey) Indicator */}
       {slides.length > 1 && (
         <div className="absolute bottom-8 left-1/2 -translate-x-1/2 z-20 flex items-center justify-center">
-          <div className="relative flex items-center gap-3 p-1.5 bg-black/20 backdrop-blur-sm rounded-full border border-white/5">
-            {/* The moving 'water drop' - using absolute position for fluid motion */}
+          {/* Container with Gooey Filter */}
+          <div
+            className="relative flex items-center justify-center p-4"
+            style={{ filter: "url('#goo')" }}
+          >
+            {/* The moving active 'water drop' */}
             <div
-              className="absolute top-1/2 -translate-y-1/2 h-2 bg-white rounded-full shadow-[0_0_8px_rgba(255,255,255,0.5)] transition-all duration-500 cubic-bezier(0.25, 1, 0.5, 1)"
+              className="absolute bg-white rounded-full transition-all duration-700 cubic-bezier(0.25, 1, 0.5, 1)"
               style={{
-                width: "8px", // Base size
-                left: `${6 + currentIndex * 20}px`, // Calculate left based on padding + gap + size
+                width: "16px",
+                height: "16px",
+                // Calculate exact position based on index.
+                // Gap is 24px (w-2 + gap-4 = 8 + 16 = 24). Initial offset centers it.
+                // Let's use transform for smooth movement
+                transform: `translateX(${
+                  (currentIndex - (slides.length - 1) / 2) * 24
+                }px)`,
               }}
             />
-            {slides.map((_, idx) => (
-              <button
-                key={idx}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setCurrentIndex(idx);
-                }}
-                className="w-2 h-2 rounded-full bg-white/20 hover:bg-white/40 transition-colors cursor-pointer block"
-                aria-label={`Go to slide ${idx + 1}`}
-              />
-            ))}
+
+            {/* Static dots */}
+            <div className="flex gap-4">
+              {slides.map((_, idx) => (
+                <button
+                  key={idx}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setCurrentIndex(idx);
+                  }}
+                  className="w-2 h-2 rounded-full bg-white/50 cursor-pointer block transition-all duration-300"
+                  aria-label={`Go to slide ${idx + 1}`}
+                />
+              ))}
+            </div>
           </div>
         </div>
       )}
@@ -691,6 +714,7 @@ const ImmersiveLightbox = ({
 
   return (
     <div className="fixed inset-0 z-[100] bg-black flex items-center justify-center animate-fade-in">
+      {/* Splash - Only show project title */}
       <div
         className={`absolute inset-0 z-[110] bg-black flex items-center justify-center pointer-events-none transition-opacity duration-1000 ${
           showSplash ? "opacity-100" : "opacity-0"
@@ -700,16 +724,19 @@ const ImmersiveLightbox = ({
           {currentImage.project}
         </h2>
       </div>
+
       <button
         onClick={onClose}
         className="absolute top-6 right-6 z-50 text-neutral-500 hover:text-white transition-colors p-4"
       >
         <X className="w-6 h-6" />
       </button>
+
       <div
         className="absolute inset-0 z-20"
         onClick={() => changeImage("next")}
       />
+
       <div className="relative z-10 w-full h-full flex items-center justify-center p-4 pointer-events-none">
         {loading && (
           <div className="absolute inset-0 flex items-center justify-center">
@@ -725,6 +752,7 @@ const ImmersiveLightbox = ({
           onLoad={() => setLoading(false)}
         />
       </div>
+
       <div className="absolute bottom-8 left-8 z-30 pointer-events-none">
         <div className="bg-black/0 backdrop-blur-none p-4 rounded-sm">
           <div className="text-white/40 font-serif font-thin text-xs tracking-widest mb-1">
@@ -806,6 +834,7 @@ const ProjectRow = ({ projectTitle, photos, onImageClick }) => {
         </h3>
         <div className="h-[1px] flex-grow bg-white/10"></div>
       </div>
+
       <div
         className={`hidden md:flex absolute inset-0 z-10 items-center justify-start pl-4 pointer-events-none transition-opacity duration-500 ease-out ${
           isProjectTitleVisible ? "opacity-100" : "opacity-0"
@@ -815,9 +844,11 @@ const ProjectRow = ({ projectTitle, photos, onImageClick }) => {
           {projectTitle}
         </h3>
       </div>
+
       <div className="md:hidden absolute right-0 top-0 bottom-8 w-12 bg-gradient-to-l from-black/50 to-transparent z-10 pointer-events-none flex items-center justify-center">
         <ChevronRight className="text-white/50 animate-pulse" size={20} />
       </div>
+
       <div
         ref={scrollContainerRef}
         className={`flex overflow-x-auto no-scrollbar gap-1 md:gap-1 transition-opacity duration-500 ease-out ${
@@ -1141,6 +1172,7 @@ const ProfileSettings = ({ settings, onUpdate }) => {
           />
         </div>
       </div>
+
       <button
         onClick={handleSave}
         className="w-full bg-white text-black font-bold py-3 rounded hover:bg-neutral-200 transition-colors"
@@ -1696,6 +1728,7 @@ const PhotosManager = ({
                         onDragOver={(e) => onDragOver(e, p)}
                         className="aspect-square relative group bg-black rounded border border-neutral-700 overflow-hidden cursor-move"
                       >
+                        {/* 后台也使用缩略图以提高管理页面的性能 */}
                         <img
                           src={p.thumbnailUrl || p.url}
                           className="w-full h-full object-cover opacity-80 group-hover:opacity-100 transition-opacity"
@@ -1732,8 +1765,6 @@ const PhotosManager = ({
   );
 };
 
-// ... AdminDashboard, MainView, App (remain the same as prev but ensuring correct exports)
-
 const AdminDashboard = ({
   photos,
   settings,
@@ -1746,6 +1777,7 @@ const AdminDashboard = ({
   const [tab, setTab] = useState("photos");
   return (
     <div className="min-h-screen bg-neutral-900 text-neutral-200 font-sans flex flex-col">
+      {/* Top Header for Admin */}
       <div className="h-16 border-b border-neutral-800 flex items-center justify-between px-6 bg-neutral-950">
         <h1 className="text-xl font-bold text-white flex items-center gap-2 font-serif">
           <Settings className="w-5 h-5" /> T8DAY CMS
@@ -1830,7 +1862,7 @@ const MainView = ({ photos, settings, onLoginClick, isOffline }) => {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [currentSlideIndex, setCurrentSlideIndex] = useState(0);
   const [lang, setLang] = useState("en");
-  const [lightboxImages, setLightboxImages] = useState([]);
+  const [lightboxImages, setLightboxImages] = useState([]); // Isolated images for lightbox
 
   const rawProfile = settings?.profile || {};
   const profile = {
@@ -1861,15 +1893,17 @@ const MainView = ({ photos, settings, onLoginClick, isOffline }) => {
     return () => window.removeEventListener("popstate", handlePopState);
   }, []);
 
-  // Handle direct URL access
+  // Handle direct URL access to projects (e.g. /works/huahin-2024/01)
   useEffect(() => {
     if (visiblePhotos.length === 0) return;
 
     const pathParts = window.location.pathname.split("/").filter(Boolean);
+    // Expecting /works/project-slug/image-index
     if (pathParts.length >= 2 && pathParts[0] === "works") {
-      const projectSlug = pathParts[1];
-      const imageIndexStr = pathParts[2] || "01";
+      const projectSlug = pathParts[1]; // e.g. "huahin-2024"
+      const imageIndexStr = pathParts[2] || "01"; // Default to 01 if missing
 
+      // Find project photos matching slug
       const targetPhotos = visiblePhotos.filter((p) => {
         const pSlug = slugify(`${p.project} ${p.year}`);
         const pSlugSimple = slugify(p.project);
@@ -1877,9 +1911,11 @@ const MainView = ({ photos, settings, onLoginClick, isOffline }) => {
       });
 
       if (targetPhotos.length > 0) {
+        // Sort
         targetPhotos.sort((a, b) => (a.order || 999) - (b.order || 999));
 
-        const imageIndex = parseInt(imageIndexStr, 10) - 1;
+        // Find index
+        const imageIndex = parseInt(imageIndexStr, 10) - 1; // 1-based to 0-based
         const safeIndex = isNaN(imageIndex)
           ? 0
           : Math.max(0, Math.min(imageIndex, targetPhotos.length - 1));
@@ -1887,10 +1923,11 @@ const MainView = ({ photos, settings, onLoginClick, isOffline }) => {
         setLightboxImages(targetPhotos);
         setInitialLightboxIndex(safeIndex);
         setLightboxOpen(true);
+        // Ensure background is works
         setState({ view: "works", showAbout: false });
       }
     }
-  }, [visiblePhotos]);
+  }, [visiblePhotos]); // Run when photos loaded
 
   const navigate = (path, newView, newShowAbout) => {
     window.history.pushState({}, "", path);
@@ -1913,13 +1950,19 @@ const MainView = ({ photos, settings, onLoginClick, isOffline }) => {
   };
 
   const handleLinkNavigation = (link) => {
+    // Check if internal link by comparing origin
     try {
       const url = new URL(link, window.location.origin);
       if (url.origin === window.location.origin) {
+        // It's internal
         window.history.pushState({}, "", url.pathname);
+
+        // Trigger manual update
         const pathParts = url.pathname.split("/").filter(Boolean);
         if (pathParts[0] === "works") {
           setState({ view: "works", showAbout: false });
+
+          // Re-run the logic from useEffect for the new path
           const projectSlug = pathParts[1];
           if (projectSlug) {
             const targetPhotos = visiblePhotos.filter((p) => {
@@ -1959,6 +2002,7 @@ const MainView = ({ photos, settings, onLoginClick, isOffline }) => {
       setInitialLightboxIndex(index);
       setLightboxOpen(true);
 
+      // Update URL
       const slug = slugify(`${item.project} ${item.year}`);
       const newPath = `/works/${slug}/${(index + 1)
         .toString()
@@ -1968,6 +2012,7 @@ const MainView = ({ photos, settings, onLoginClick, isOffline }) => {
   };
 
   const handleLightboxIndexChange = (newIndex) => {
+    // Update URL without pushing history (replace)
     if (lightboxImages.length > 0) {
       const item = lightboxImages[newIndex];
       const slug = slugify(`${item.project} ${item.year}`);
@@ -2055,6 +2100,8 @@ const MainView = ({ photos, settings, onLoginClick, isOffline }) => {
     </div>
   );
 };
+
+// --- Main App Logic ---
 
 class ErrorBoundaryWrapper extends Component {
   constructor(props) {
