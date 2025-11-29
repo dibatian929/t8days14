@@ -42,6 +42,7 @@ import {
   Youtube,
   ArrowUp,
   ArrowDown,
+  Globe2,
 } from "lucide-react";
 import { initializeApp } from "firebase/app";
 import {
@@ -102,6 +103,7 @@ try {
 
 const appId = typeof __app_id !== "undefined" ? __app_id : "default-app-id";
 
+// 安全的集合获取函数
 const getPublicCollection = (colName) => {
   if (!db) throw new Error("Database not initialized");
   return collection(db, "artifacts", appId, "public", "data", colName);
@@ -210,6 +212,9 @@ const DEFAULT_SLIDES = [
 const DEFAULT_PROFILE = {
   brandName: "T8DAYS",
   logoUrl: "",
+  faviconUrl: "", // New: Favicon
+  siteTitle: "T8DAYS Photography", // New: Browser Title
+  siteDescription: "A photography portfolio.", // New: Meta Description
   email: "contact@t8days.com",
   location: "Bangkok",
   heroImage:
@@ -242,6 +247,33 @@ const DEFAULT_SETTINGS = {
 };
 
 // --- 2. 基础组件 ---
+
+// Meta Updater Component
+const MetaUpdater = ({ profile }) => {
+  useEffect(() => {
+    // Update Title
+    if (profile.siteTitle) document.title = profile.siteTitle;
+
+    // Update Favicon
+    let link = document.querySelector("link[rel~='icon']");
+    if (!link) {
+      link = document.createElement("link");
+      link.rel = "icon";
+      document.head.appendChild(link);
+    }
+    link.href = profile.faviconUrl || "/favicon.ico";
+
+    // Update Description
+    let meta = document.querySelector("meta[name='description']");
+    if (!meta) {
+      meta = document.createElement("meta");
+      meta.name = "description";
+      document.head.appendChild(meta);
+    }
+    meta.content = profile.siteDescription || "";
+  }, [profile]);
+  return null;
+};
 
 const LoginModal = ({ isOpen, onClose, onLogin }) => {
   const [passcode, setPasscode] = useState("");
@@ -841,15 +873,15 @@ const ProfileSettings = ({ settings, onUpdate }) => {
       },
     }));
 
-  const handleAvatarUpload = async (e) => {
+  const handleImageUpload = async (e, field) => {
     if (!e.target.files[0]) return;
     setUploading(true);
     try {
       const url = await uploadFileToStorage(
         e.target.files[0],
-        `profile/avatar_${Date.now()}`
+        `profile/${field}_${Date.now()}`
       );
-      handleChange("heroImage", url);
+      handleChange(field, url);
     } catch (err) {
       alert(err.message);
     }
@@ -863,55 +895,119 @@ const ProfileSettings = ({ settings, onUpdate }) => {
 
   return (
     <div className="max-w-3xl mx-auto space-y-8 pb-12">
-      <div className="bg-neutral-900 p-6 rounded-xl border border-neutral-800 flex flex-col md:flex-row gap-8">
-        <div className="w-full md:w-1/3">
-          <label className="block relative group cursor-pointer">
-            <div className="aspect-[4/5] bg-black rounded overflow-hidden border border-neutral-700">
+      {/* Branding Section */}
+      <div className="bg-neutral-900 p-6 rounded-xl border border-neutral-800 space-y-6">
+        <h3 className="text-lg font-bold text-white flex items-center gap-2">
+          <Globe2 className="w-5 h-5" /> Site Identity & Branding
+        </h3>
+
+        <div className="flex gap-6">
+          <div className="w-1/3">
+            <label className="block text-xs text-neutral-500 uppercase mb-2">
+              Portrait
+            </label>
+            <label className="block relative group cursor-pointer aspect-[3/4] bg-black rounded border border-neutral-700 overflow-hidden">
               <img
                 src={formData.heroImage}
-                className="w-full h-full object-cover group-hover:opacity-50 transition-opacity"
+                className="w-full h-full object-cover"
               />
-              <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100">
-                {uploading ? (
-                  <Loader2 className="animate-spin text-white" />
-                ) : (
-                  <UploadCloud className="text-white" />
-                )}
-              </div>
-            </div>
+              <input
+                type="file"
+                className="hidden"
+                onChange={(e) => handleImageUpload(e, "heroImage")}
+              />
+            </label>
+          </div>
+          <div className="w-1/3">
+            <label className="block text-xs text-neutral-500 uppercase mb-2">
+              Logo (Header)
+            </label>
+            <label className="block relative group cursor-pointer aspect-square bg-black rounded border border-neutral-700 overflow-hidden flex items-center justify-center">
+              {formData.logoUrl ? (
+                <img
+                  src={formData.logoUrl}
+                  className="w-3/4 h-3/4 object-contain"
+                />
+              ) : (
+                <span className="text-xs text-neutral-600">Upload Logo</span>
+              )}
+              <input
+                type="file"
+                className="hidden"
+                onChange={(e) => handleImageUpload(e, "logoUrl")}
+              />
+            </label>
+          </div>
+          <div className="w-1/3">
+            <label className="block text-xs text-neutral-500 uppercase mb-2">
+              Favicon (Browser)
+            </label>
+            <label className="block relative group cursor-pointer aspect-square bg-black rounded border border-neutral-700 overflow-hidden flex items-center justify-center">
+              {formData.faviconUrl ? (
+                <img
+                  src={formData.faviconUrl}
+                  className="w-1/2 h-1/2 object-contain"
+                />
+              ) : (
+                <span className="text-xs text-neutral-600">Upload Icon</span>
+              )}
+              <input
+                type="file"
+                className="hidden"
+                onChange={(e) => handleImageUpload(e, "faviconUrl")}
+              />
+            </label>
+          </div>
+        </div>
+
+        <div className="space-y-3">
+          <div>
+            <label className="text-xs text-neutral-500 uppercase">
+              Browser Tab Title
+            </label>
             <input
-              type="file"
-              className="hidden"
-              onChange={handleAvatarUpload}
+              className="w-full bg-black border border-neutral-700 rounded p-2 text-white text-sm"
+              value={formData.siteTitle || ""}
+              onChange={(e) => handleChange("siteTitle", e.target.value)}
+              placeholder="e.g. T8DAYS Photography"
             />
-            <span className="text-xs text-center block mt-2 text-neutral-500">
-              Click to upload portrait
-            </span>
-          </label>
+          </div>
+          <div>
+            <label className="text-xs text-neutral-500 uppercase">
+              SEO Description
+            </label>
+            <input
+              className="w-full bg-black border border-neutral-700 rounded p-2 text-white text-sm"
+              value={formData.siteDescription || ""}
+              onChange={(e) => handleChange("siteDescription", e.target.value)}
+              placeholder="e.g. Portfolio of a landscape photographer"
+            />
+          </div>
         </div>
-        <div className="w-full md:w-2/3 space-y-4">
-          <h3 className="text-lg font-bold text-white flex items-center gap-2">
-            <User className="w-5 h-5" /> Basic Info
-          </h3>
-          <input
-            className="w-full bg-black border border-neutral-700 rounded p-2 text-white"
-            placeholder="Brand Name"
-            value={formData.brandName}
-            onChange={(e) => handleChange("brandName", e.target.value)}
-          />
-          <input
-            className="w-full bg-black border border-neutral-700 rounded p-2 text-white"
-            placeholder="Email"
-            value={formData.email}
-            onChange={(e) => handleChange("email", e.target.value)}
-          />
-          <input
-            className="w-full bg-black border border-neutral-700 rounded p-2 text-white"
-            placeholder="Location"
-            value={formData.location}
-            onChange={(e) => handleChange("location", e.target.value)}
-          />
-        </div>
+      </div>
+
+      <div className="bg-neutral-900 p-6 rounded-xl border border-neutral-800 space-y-4">
+        <h3 className="text-lg font-bold text-white flex items-center gap-2">
+          <User className="w-5 h-5" /> Basic Info
+        </h3>
+        <input
+          className="w-full bg-black border border-neutral-700 rounded p-2 text-white"
+          placeholder="Brand Name (Displayed if no logo)"
+          value={formData.brandName}
+          onChange={(e) => handleChange("brandName", e.target.value)}
+        />
+        <input
+          className="w-full bg-black border border-neutral-700 rounded p-2 text-white"
+          placeholder="Email"
+          value={formData.email}
+          onChange={(e) => handleChange("email", e.target.value)}
+        />
+        <input
+          className="w-full bg-black border border-neutral-700 rounded p-2 text-white"
+          placeholder="Location"
+          value={formData.location}
+          onChange={(e) => handleChange("location", e.target.value)}
+        />
       </div>
 
       <div className="bg-neutral-900 p-6 rounded-xl border border-neutral-800 space-y-4">
@@ -1768,6 +1864,7 @@ const MainView = ({ photos, settings, onLoginClick, isOffline }) => {
 
   return (
     <div className="bg-neutral-950 text-neutral-200 font-sans selection:bg-white selection:text-black relative">
+      <MetaUpdater profile={settings.profile} />
       <div className="noise-bg"></div>
       <button
         onClick={onLoginClick}
