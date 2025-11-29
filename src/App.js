@@ -102,7 +102,6 @@ try {
 
 const appId = typeof __app_id !== "undefined" ? __app_id : "default-app-id";
 
-// 安全的集合获取函数
 const getPublicCollection = (colName) => {
   if (!db) throw new Error("Database not initialized");
   return collection(db, "artifacts", appId, "public", "data", colName);
@@ -119,16 +118,15 @@ const uploadFileToStorage = async (file, path) => {
   return await getDownloadURL(snapshot.ref);
 };
 
-// 工具函数：生成 URL slug
 const slugify = (text) => {
   return text
     .toString()
     .toLowerCase()
-    .replace(/\s+/g, "-") // Replace spaces with -
-    .replace(/[^\w\-]+/g, "") // Remove all non-word chars
-    .replace(/\-\-+/g, "-") // Replace multiple - with single -
-    .replace(/^-+/, "") // Trim - from start
-    .replace(/-+$/, ""); // Trim - from end
+    .replace(/\s+/g, "-")
+    .replace(/[^\w\-]+/g, "")
+    .replace(/\-\-+/g, "-")
+    .replace(/^-+/, "")
+    .replace(/-+$/, "");
 };
 
 // --- 1. 样式与默认配置 ---
@@ -347,9 +345,9 @@ const GlobalNav = ({
   );
 };
 
-// --- 3. 页面组件 (Slideshow, Works, About) ---
+// --- 3. 页面组件 ---
 
-const HeroSlideshow = ({ slides, onIndexChange }) => {
+const HeroSlideshow = ({ slides, onIndexChange, onLinkClick }) => {
   const [currentIndex, setCurrentIndex] = useState(0);
   useEffect(() => {
     if (!slides || slides.length === 0) return;
@@ -365,15 +363,29 @@ const HeroSlideshow = ({ slides, onIndexChange }) => {
 
   if (!slides || slides.length === 0) return null;
 
+  const currentSlide = slides[currentIndex];
+
+  const handleSlideClick = () => {
+    if (currentSlide.link) {
+      if (onLinkClick) {
+        onLinkClick(currentSlide.link);
+      } else {
+        window.open(currentSlide.link, "_blank");
+      }
+    }
+  };
+
   return (
-    <div className="absolute inset-0 w-full h-full bg-neutral-900">
+    <div
+      className="absolute inset-0 w-full h-full bg-neutral-900 cursor-pointer"
+      onClick={handleSlideClick}
+    >
       {slides.map((slide, index) => (
         <div
           key={index}
-          onClick={() => slide.link && window.open(slide.link, "_blank")}
           className={`absolute inset-0 w-full h-full transition-opacity duration-[2000ms] ease-in-out ${
             index === currentIndex ? "opacity-100" : "opacity-0"
-          } ${slide.link ? "cursor-pointer" : ""}`}
+          }`}
         >
           {slide.type === "video" ? (
             <video
@@ -527,7 +539,6 @@ const ImmersiveLightbox = ({
 
   return (
     <div className="fixed inset-0 z-[100] bg-black flex items-center justify-center animate-fade-in">
-      {/* Splash - Only show project title */}
       <div
         className={`absolute inset-0 z-[110] bg-black flex items-center justify-center pointer-events-none transition-opacity duration-1000 ${
           showSplash ? "opacity-100" : "opacity-0"
@@ -725,7 +736,6 @@ const WorksPage = ({ photos, profile, ui, onImageClick }) => {
 
 // --- 4. 后台管理组件 ---
 
-// 4.1 个人资料
 const ProfileSettings = ({ settings, onUpdate }) => {
   const [formData, setFormData] = useState(settings.profile);
   const [activeLangTab, setActiveLangTab] = useState("cn");
@@ -912,7 +922,6 @@ const ProfileSettings = ({ settings, onUpdate }) => {
   );
 };
 
-// 4.2 轮播图管理
 const SlidesSettings = ({ settings, onUpdate }) => {
   const [slides, setSlides] = useState(settings.profile.heroSlides || []);
   const [form, setForm] = useState({ title: "", link: "", url: "" });
@@ -1034,7 +1043,6 @@ const SlidesSettings = ({ settings, onUpdate }) => {
   );
 };
 
-// 4.3 照片管理
 const PhotosManager = ({
   photos,
   onAddPhoto,
@@ -1507,11 +1515,6 @@ const MainView = ({ photos, settings, onLoginClick, isOffline }) => {
       const imageIndexStr = pathParts[2] || "01"; // Default to 01 if missing
 
       // Find project photos matching slug
-      // We need to match slug back to project name.
-      // Simple strategy: check all projects, slugify them, match.
-      // Or check project + year combo.
-      // Since photos are flat, let's find matching photos.
-
       const targetPhotos = visiblePhotos.filter((p) => {
         const pSlug = slugify(`${p.project} ${p.year}`);
         const pSlugSimple = slugify(p.project);
@@ -1549,22 +1552,74 @@ const MainView = ({ photos, settings, onLoginClick, isOffline }) => {
     } else if (target === "works") {
       navigate("/works", "works", false);
     } else if (target === "about") {
-      // If user is on works, keep works background but show about overlay?
-      // For simplicity, reset to home background or keep current.
-      // Let's default to home background for clean URL logic '/about'
       navigate("/about", "home", true);
     }
   };
 
   const handleCloseAbout = () => {
-    // Return to home URL or just close overlay?
-    // Usually closing a modal goes back.
-    // If we were at /about, going back to / is appropriate.
     navigate("/", "home", false);
   };
 
+  const handleLinkNavigation = (link) => {
+    // Check if internal link by comparing origin
+    try {
+      const url = new URL(link, window.location.origin);
+      if (url.origin === window.location.origin) {
+        // It's internal
+        window.history.pushState({}, "", url.pathname);
+
+        // Trigger manual update
+        const pathParts = url.pathname.split("/").filter(Boolean);
+        if (pathParts[0] === "works") {
+          setState({ view: "works", showAbout: false });
+          // If deep link, useEffect will catch it if photos loaded,
+          // but to be instant we might need to manually trigger logic if we wanted.
+          // Since useEffect depends on visiblePhotos, it might not re-run just on pushState.
+          // However, for this specific request, just changing URL and view is often enough if the useEffect logic
+          // was tied to location change. Since we can't listen to location change in useEffect easily without a router,
+          // we might need to trigger the checking logic manually here too.
+          // But let's keep it simple: the user wants "control in website".
+          // If it's a generic link like /works, setting view is enough.
+          // If it's a specific project, we might need to rely on the popstate listener if we dispatch one,
+          // or just manually set state.
+          // Let's dispatch a popstate event to trigger our listener? No, pushState doesn't trigger it.
+          // We'll just rely on the fact that if they click a link to a project,
+          // they likely want to see that project.
+
+          // Re-run the logic from useEffect for the new path
+          const projectSlug = pathParts[1];
+          if (projectSlug) {
+            const targetPhotos = visiblePhotos.filter((p) => {
+              const pSlug = slugify(`${p.project} ${p.year}`);
+              const pSlugSimple = slugify(p.project);
+              return pSlug === projectSlug || pSlugSimple === projectSlug;
+            });
+            if (targetPhotos.length > 0) {
+              targetPhotos.sort((a, b) => (a.order || 999) - (b.order || 999));
+              const imageIndexStr = pathParts[2] || "01";
+              const idx = parseInt(imageIndexStr, 10) - 1;
+              const safeIndex = isNaN(idx)
+                ? 0
+                : Math.max(0, Math.min(idx, targetPhotos.length - 1));
+              setLightboxImages(targetPhotos);
+              setInitialLightboxIndex(safeIndex);
+              setLightboxOpen(true);
+            }
+          }
+        } else if (pathParts[0] === "about") {
+          setState({ view: "home", showAbout: true });
+        } else {
+          setState({ view: "home", showAbout: false });
+        }
+      } else {
+        window.location.href = link;
+      }
+    } catch (e) {
+      window.location.href = link;
+    }
+  };
+
   const handleImageClick = (item, projectPhotos) => {
-    // Set the context to ONLY the photos in this project
     const index = projectPhotos.findIndex((p) => p.id === item.id);
     if (index !== -1) {
       setLightboxImages(projectPhotos);
@@ -1581,7 +1636,6 @@ const MainView = ({ photos, settings, onLoginClick, isOffline }) => {
   };
 
   const handleLightboxIndexChange = (newIndex) => {
-    // Update URL without pushing history (replace)
     if (lightboxImages.length > 0) {
       const item = lightboxImages[newIndex];
       const slug = slugify(`${item.project} ${item.year}`);
@@ -1594,7 +1648,6 @@ const MainView = ({ photos, settings, onLoginClick, isOffline }) => {
 
   const handleLightboxClose = () => {
     setLightboxOpen(false);
-    // Revert URL to /works
     window.history.pushState({}, "", "/works");
   };
 
@@ -1618,7 +1671,11 @@ const MainView = ({ photos, settings, onLoginClick, isOffline }) => {
       />
       {view === "home" && !showAbout && (
         <div className="relative h-screen w-screen overflow-hidden">
-          <HeroSlideshow slides={slides} onIndexChange={setCurrentSlideIndex} />
+          <HeroSlideshow
+            slides={slides}
+            onIndexChange={setCurrentSlideIndex}
+            onLinkClick={handleLinkNavigation}
+          />
           <div className="absolute bottom-0 left-0 z-10 px-6 md:px-12 pb-16 md:pb-24 max-w-5xl w-full">
             <h2
               className="text-white/70 tracking-[0.4em] mb-6 uppercase text-[10px] font-bold animate-fade-in-up font-serif"
@@ -1793,9 +1850,7 @@ const AppContent = () => {
   const handleUpdateSettings = async (s) =>
     await setDoc(getPublicDoc("settings", "global"), s, { merge: true });
 
-  // New batch update function for renaming and reordering
   const handleBatchUpdate = async (updates) => {
-    // In a real app we'd use a batch, here we map promises for simplicity in this environment
     try {
       const promises = updates.map((u) => {
         const { id, ...data } = u;
