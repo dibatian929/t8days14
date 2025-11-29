@@ -119,6 +119,7 @@ const uploadFileToStorage = async (file, path) => {
   return await getDownloadURL(snapshot.ref);
 };
 
+// 辅助函数：生成 slug
 const slugify = (text) => {
   return text
     .toString()
@@ -128,6 +129,54 @@ const slugify = (text) => {
     .replace(/\-\-+/g, "-")
     .replace(/^-+/, "")
     .replace(/-+$/, "");
+};
+
+// 辅助函数：前端压缩图片生成缩略图
+const compressImage = async (file) => {
+  return new Promise((resolve) => {
+    const reader = new FileReader();
+    reader.readAsDataURL(file);
+    reader.onload = (event) => {
+      const img = new Image();
+      img.src = event.target.result;
+      img.onload = () => {
+        const canvas = document.createElement("canvas");
+        const MAX_WIDTH = 500; // 缩略图宽度限制为 500px
+        const scaleSize = MAX_WIDTH / img.width;
+
+        // 如果原图比缩略图还小，就不压缩
+        if (scaleSize >= 1) {
+          resolve(null);
+          return;
+        }
+
+        canvas.width = MAX_WIDTH;
+        canvas.height = img.height * scaleSize;
+
+        const ctx = canvas.getContext("2d");
+        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+
+        canvas.toBlob(
+          (blob) => {
+            if (blob) {
+              resolve(
+                new File([blob], "thumb_" + file.name, {
+                  type: "image/jpeg",
+                  lastModified: Date.now(),
+                })
+              );
+            } else {
+              resolve(null);
+            }
+          },
+          "image/jpeg",
+          0.7
+        ); // 70% 质量的 JPEG
+      };
+      img.onerror = () => resolve(null);
+    };
+    reader.onerror = () => resolve(null);
+  });
 };
 
 // --- 1. 样式与默认配置 ---
@@ -625,24 +674,15 @@ const ProjectRow = ({ projectTitle, photos, onImageClick }) => {
   };
 
   const handleMouseEnter = () => {
-    // Immediate activation for scrolling or slight visual feedback could go here if needed
-    // Clear any existing timeout (from quick exit/enter)
     if (hoverTimeoutRef.current) clearTimeout(hoverTimeoutRef.current);
-
-    // Set delayed title appearance
     if (window.innerWidth >= 768) {
       hoverTimeoutRef.current = setTimeout(() => setShowOverlay(true), 600);
     }
   };
 
   const handleMouseLeave = () => {
-    // Immediately clear timeout to prevent ghost title
     if (hoverTimeoutRef.current) clearTimeout(hoverTimeoutRef.current);
-
-    // Immediately hide overlay
     setShowOverlay(false);
-
-    // Stop scrolling
     if (animationRef.current) cancelAnimationFrame(animationRef.current);
   };
 
@@ -677,8 +717,9 @@ const ProjectRow = ({ projectTitle, photos, onImageClick }) => {
             className="flex-shrink-0 aspect-square bg-neutral-900 overflow-hidden cursor-pointer w-[28vw] md:w-[9vw]"
             onClick={() => onImageClick(photo, photos)}
           >
+            {/* 优化核心：优先使用 thumbnailUrl，回退到 url */}
             <img
-              src={photo.url}
+              src={photo.thumbnailUrl || photo.url}
               alt="Work"
               loading="lazy"
               decoding="async"
@@ -1086,6 +1127,31 @@ const PhotosManager = ({
     return acc;
   }, {});
 
+  const handleDeleteProject = async (project, year) => {
+    const photosToDelete = photos.filter(
+      (p) =>
+        (p.year === year || (!p.year && year === "Unsorted")) &&
+        (p.project === project || (!p.project && project === "Uncategorized"))
+    );
+
+    if (photosToDelete.length === 0) return;
+
+    if (
+      confirm(
+        `Warning: This will permanently delete the project "${project}" and all ${photosToDelete.length} photos inside it.\n\nAre you sure?`
+      )
+    ) {
+      setUploading(true);
+      try {
+        await Promise.all(photosToDelete.map((p) => onDeletePhoto(p.id)));
+      } catch (e) {
+        alert("Error deleting project: " + e.message);
+      } finally {
+        setUploading(false);
+      }
+    }
+  };
+
   const handleBatchUpload = async () => {
     if (files.length === 0) return;
     if (!uploadProject.trim())
@@ -1096,14 +1162,24 @@ const PhotosManager = ({
     setUploading(true);
     try {
       const promises = Array.from(files).map(async (file, idx) => {
-        const path = `photos/${uploadYear}/${uploadProject.trim()}/${Date.now()}_${idx}`;
+        const timestamp = Date.now();
+        const thumbnailFile = await compressImage(file);
+        let thumbnailUrl = "";
+        if (thumbnailFile) {
+          const thumbPath = `photos/${uploadYear}/${uploadProject.trim()}/${timestamp}_${idx}_thumb.jpg`;
+          thumbnailUrl = await uploadFileToStorage(thumbnailFile, thumbPath);
+        }
+
+        const path = `photos/${uploadYear}/${uploadProject.trim()}/${timestamp}_${idx}`;
         const url = await uploadFileToStorage(file, path);
+
         return onAddPhoto({
           title: file.name.split(".")[0],
           year: uploadYear.trim(),
           project: uploadProject.trim(),
           url: url,
-          order: 9999, // New items at end
+          thumbnailUrl: thumbnailUrl,
+          order: 9999,
           isVisible: true,
         });
       });
@@ -1123,13 +1199,23 @@ const PhotosManager = ({
     setUploading(true);
     try {
       const promises = Array.from(projectFiles).map(async (file, idx) => {
-        const path = `photos/${year}/${project}/${Date.now()}_${idx}`;
+        const timestamp = Date.now();
+        const thumbnailFile = await compressImage(file);
+        let thumbnailUrl = "";
+        if (thumbnailFile) {
+          const thumbPath = `photos/${year}/${project}/${timestamp}_${idx}_thumb.jpg`;
+          thumbnailUrl = await uploadFileToStorage(thumbnailFile, thumbPath);
+        }
+
+        const path = `photos/${year}/${project}/${timestamp}_${idx}`;
         const url = await uploadFileToStorage(file, path);
+
         return onAddPhoto({
           title: file.name.split(".")[0],
           year: year,
           project: project,
           url: url,
+          thumbnailUrl: thumbnailUrl,
           order: 9999,
           isVisible: true,
         });
@@ -1167,27 +1253,21 @@ const PhotosManager = ({
     const newIndex = direction === "up" ? currentIndex - 1 : currentIndex + 1;
     if (newIndex < 0 || newIndex >= projectsInYear.length) return;
 
-    // Swap projects array
     const newProjectsOrder = [...projectsInYear];
     [newProjectsOrder[currentIndex], newProjectsOrder[newIndex]] = [
       newProjectsOrder[newIndex],
       newProjectsOrder[currentIndex],
     ];
 
-    // Re-calculate order for ALL photos in this year based on new project sequence
     let currentOrderCounter = 1;
     const updates = [];
-    const newLocalPhotos = [...localPhotos]; // Clone
+    const newLocalPhotos = [...localPhotos];
 
-    // For each project in the new order...
     newProjectsOrder.forEach((proj) => {
-      // Find photos for this project
       const projectPhotos = grouped[year][proj];
-      // Keep their internal relative order (sorted by current order)
       projectPhotos.sort((a, b) => (a.order || 0) - (b.order || 0));
 
       projectPhotos.forEach((p) => {
-        // Find in local array and update
         const localIndex = newLocalPhotos.findIndex((lp) => lp.id === p.id);
         if (localIndex > -1) {
           newLocalPhotos[localIndex] = {
@@ -1200,12 +1280,9 @@ const PhotosManager = ({
       });
     });
 
-    setLocalPhotos(newLocalPhotos); // Immediate UI update
-    // We don't auto-save to DB here to let user confirm, or we could.
-    // Let's just update local state, user must click "Save Order"
+    setLocalPhotos(newLocalPhotos);
   };
 
-  // Drag Sorting Logic
   const [draggedItem, setDraggedItem] = useState(null);
 
   const onDragStart = (e, item) => {
@@ -1243,7 +1320,6 @@ const PhotosManager = ({
 
   return (
     <div className="space-y-12">
-      {/* 1. Upload Area */}
       <div className="bg-neutral-900 border border-neutral-800 p-6 rounded-xl sticky top-0 z-20 shadow-xl">
         <h3 className="text-white font-bold mb-4 flex items-center gap-2">
           <UploadCloud className="w-5 h-5" /> Batch Upload
@@ -1325,8 +1401,16 @@ const PhotosManager = ({
                       <button
                         onClick={() => handleRenameProject(proj, year)}
                         className="text-neutral-500 hover:text-white p-1 rounded"
+                        title="Rename Project"
                       >
                         <Edit2 size={14} />
+                      </button>
+                      <button
+                        onClick={() => handleDeleteProject(proj, year)}
+                        className="text-red-500 hover:text-red-400 p-1 rounded"
+                        title="Delete Project"
+                      >
+                        <Trash2 size={14} />
                       </button>
                     </div>
                     <div className="flex gap-2">
@@ -1355,8 +1439,9 @@ const PhotosManager = ({
                         onDragOver={(e) => onDragOver(e, p)}
                         className="aspect-square relative group bg-black rounded border border-neutral-700 overflow-hidden cursor-move"
                       >
+                        {/* 后台也使用缩略图以提高管理页面的性能 */}
                         <img
-                          src={p.url}
+                          src={p.thumbnailUrl || p.url}
                           className="w-full h-full object-cover opacity-80 group-hover:opacity-100 transition-opacity"
                         />
                         <button
@@ -1369,7 +1454,6 @@ const PhotosManager = ({
                         </button>
                       </div>
                     ))}
-                    {/* Add Photo Button for this project */}
                     <div className="aspect-square relative group bg-neutral-900 border-2 border-dashed border-neutral-700 rounded flex flex-col items-center justify-center cursor-pointer hover:border-white hover:text-white text-neutral-500 transition-colors">
                       <Plus size={24} />
                       <span className="text-[10px] uppercase font-bold mt-1">
@@ -1404,7 +1488,6 @@ const AdminDashboard = ({
   const [tab, setTab] = useState("photos");
   return (
     <div className="min-h-screen bg-neutral-900 text-neutral-200 font-sans flex flex-col">
-      {/* Top Header for Admin */}
       <div className="h-16 border-b border-neutral-800 flex items-center justify-between px-6 bg-neutral-950">
         <h1 className="text-xl font-bold text-white flex items-center gap-2 font-serif">
           <Settings className="w-5 h-5" /> T8DAY CMS
@@ -1474,7 +1557,6 @@ const AdminDashboard = ({
 };
 
 const MainView = ({ photos, settings, onLoginClick, isOffline }) => {
-  // Helper to get initial state from URL
   const getInitialState = () => {
     const path = window.location.pathname;
     if (path === "/about") return { view: "home", showAbout: true };
@@ -1489,7 +1571,7 @@ const MainView = ({ photos, settings, onLoginClick, isOffline }) => {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [currentSlideIndex, setCurrentSlideIndex] = useState(0);
   const [lang, setLang] = useState("en");
-  const [lightboxImages, setLightboxImages] = useState([]); // Isolated images for lightbox
+  const [lightboxImages, setLightboxImages] = useState([]);
 
   const rawProfile = settings?.profile || {};
   const profile = {
@@ -1511,7 +1593,6 @@ const MainView = ({ photos, settings, onLoginClick, isOffline }) => {
     slides[currentSlideIndex]?.title || profile.brandName;
   const visiblePhotos = photos.filter((p) => p.isVisible !== false);
 
-  // Sync state with URL on popstate
   useEffect(() => {
     const handlePopState = () => {
       setState(getInitialState());
@@ -1520,17 +1601,14 @@ const MainView = ({ photos, settings, onLoginClick, isOffline }) => {
     return () => window.removeEventListener("popstate", handlePopState);
   }, []);
 
-  // Handle direct URL access to projects (e.g. /works/huahin-2024/01)
   useEffect(() => {
     if (visiblePhotos.length === 0) return;
 
     const pathParts = window.location.pathname.split("/").filter(Boolean);
-    // Expecting /works/project-slug/image-index
     if (pathParts.length >= 2 && pathParts[0] === "works") {
-      const projectSlug = pathParts[1]; // e.g. "huahin-2024"
-      const imageIndexStr = pathParts[2] || "01"; // Default to 01 if missing
+      const projectSlug = pathParts[1];
+      const imageIndexStr = pathParts[2] || "01";
 
-      // Find project photos matching slug
       const targetPhotos = visiblePhotos.filter((p) => {
         const pSlug = slugify(`${p.project} ${p.year}`);
         const pSlugSimple = slugify(p.project);
@@ -1538,11 +1616,9 @@ const MainView = ({ photos, settings, onLoginClick, isOffline }) => {
       });
 
       if (targetPhotos.length > 0) {
-        // Sort
         targetPhotos.sort((a, b) => (a.order || 999) - (b.order || 999));
 
-        // Find index
-        const imageIndex = parseInt(imageIndexStr, 10) - 1; // 1-based to 0-based
+        const imageIndex = parseInt(imageIndexStr, 10) - 1;
         const safeIndex = isNaN(imageIndex)
           ? 0
           : Math.max(0, Math.min(imageIndex, targetPhotos.length - 1));
@@ -1550,11 +1626,10 @@ const MainView = ({ photos, settings, onLoginClick, isOffline }) => {
         setLightboxImages(targetPhotos);
         setInitialLightboxIndex(safeIndex);
         setLightboxOpen(true);
-        // Ensure background is works
         setState({ view: "works", showAbout: false });
       }
     }
-  }, [visiblePhotos]); // Run when photos loaded
+  }, [visiblePhotos]);
 
   const navigate = (path, newView, newShowAbout) => {
     window.history.pushState({}, "", path);
@@ -1577,32 +1652,13 @@ const MainView = ({ photos, settings, onLoginClick, isOffline }) => {
   };
 
   const handleLinkNavigation = (link) => {
-    // Check if internal link by comparing origin
     try {
       const url = new URL(link, window.location.origin);
       if (url.origin === window.location.origin) {
-        // It's internal
         window.history.pushState({}, "", url.pathname);
-
-        // Trigger manual update
         const pathParts = url.pathname.split("/").filter(Boolean);
         if (pathParts[0] === "works") {
           setState({ view: "works", showAbout: false });
-          // If deep link, useEffect will catch it if photos loaded,
-          // but to be instant we might need to manually trigger logic if we wanted.
-          // Since useEffect depends on visiblePhotos, it might not re-run just on pushState.
-          // However, for this specific request, just changing URL and view is often enough if the useEffect logic
-          // was tied to location change. Since we can't listen to location change in useEffect easily without a router,
-          // we might need to trigger the checking logic manually here too.
-          // But let's keep it simple: the user wants "control in website".
-          // If it's a generic link like /works, setting view is enough.
-          // If it's a specific project, we might need to rely on the popstate listener if we dispatch one,
-          // or just manually set state.
-          // Let's dispatch a popstate event to trigger our listener? No, pushState doesn't trigger it.
-          // We'll just rely on the fact that if they click a link to a project,
-          // they likely want to see that project.
-
-          // Re-run the logic from useEffect for the new path
           const projectSlug = pathParts[1];
           if (projectSlug) {
             const targetPhotos = visiblePhotos.filter((p) => {
@@ -1642,7 +1698,6 @@ const MainView = ({ photos, settings, onLoginClick, isOffline }) => {
       setInitialLightboxIndex(index);
       setLightboxOpen(true);
 
-      // Update URL
       const slug = slugify(`${item.project} ${item.year}`);
       const newPath = `/works/${slug}/${(index + 1)
         .toString()
