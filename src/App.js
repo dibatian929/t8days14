@@ -40,6 +40,8 @@ import {
   ExternalLink,
   Twitter,
   Youtube,
+  ArrowUp,
+  ArrowDown,
 } from "lucide-react";
 import { initializeApp } from "firebase/app";
 import {
@@ -537,7 +539,6 @@ const ImmersiveLightbox = ({ initialIndex, images, onClose }) => {
           <div className="text-white/40 font-serif font-thin text-xs tracking-widest mb-1">
             {currentImage.year} — {currentImage.project}
           </div>
-          {/* Individual image title removed per request */}
         </div>
       </div>
       <div className="absolute bottom-8 right-8 z-30 text-white/30 font-mono text-xs tracking-widest pointer-events-none">
@@ -1022,11 +1023,9 @@ const PhotosManager = ({
     new Date().getFullYear().toString()
   );
   const [uploadProject, setUploadProject] = useState("");
-  // Local state for dragging
   const [localPhotos, setLocalPhotos] = useState(photos);
 
   useEffect(() => {
-    // Sync when props change, but only if we are not dragging? For simplicity sync always for now
     setLocalPhotos(photos);
   }, [photos]);
 
@@ -1069,11 +1068,36 @@ const PhotosManager = ({
     setUploading(false);
   };
 
+  const handleProjectUpload = async (e, year, project) => {
+    const projectFiles = e.target.files;
+    if (!projectFiles || projectFiles.length === 0) return;
+
+    setUploading(true);
+    try {
+      const promises = Array.from(projectFiles).map(async (file, idx) => {
+        const path = `photos/${year}/${project}/${Date.now()}_${idx}`;
+        const url = await uploadFileToStorage(file, path);
+        return onAddPhoto({
+          title: file.name.split(".")[0],
+          year: year,
+          project: project,
+          url: url,
+          order: 9999,
+          isVisible: true,
+        });
+      });
+      await Promise.all(promises);
+      alert("Added photos to " + project);
+    } catch (e) {
+      alert(e.message);
+    }
+    setUploading(false);
+  };
+
   const handleRenameProject = async (oldName, year) => {
     const newName = prompt(`Rename project "${oldName}" to:`, oldName);
     if (!newName || newName === oldName) return;
 
-    // Find all photos in this group
     const photosToUpdate = photos.filter(
       (p) =>
         (p.year === year || (!p.year && year === "Unsorted")) &&
@@ -1087,6 +1111,52 @@ const PhotosManager = ({
     }
   };
 
+  const moveProject = (year, projectTitle, direction) => {
+    const projectsInYear = Object.keys(grouped[year]);
+    const currentIndex = projectsInYear.indexOf(projectTitle);
+    if (currentIndex === -1) return;
+
+    const newIndex = direction === "up" ? currentIndex - 1 : currentIndex + 1;
+    if (newIndex < 0 || newIndex >= projectsInYear.length) return;
+
+    // Swap projects array
+    const newProjectsOrder = [...projectsInYear];
+    [newProjectsOrder[currentIndex], newProjectsOrder[newIndex]] = [
+      newProjectsOrder[newIndex],
+      newProjectsOrder[currentIndex],
+    ];
+
+    // Re-calculate order for ALL photos in this year based on new project sequence
+    let currentOrderCounter = 1;
+    const updates = [];
+    const newLocalPhotos = [...localPhotos]; // Clone
+
+    // For each project in the new order...
+    newProjectsOrder.forEach((proj) => {
+      // Find photos for this project
+      const projectPhotos = grouped[year][proj];
+      // Keep their internal relative order (sorted by current order)
+      projectPhotos.sort((a, b) => (a.order || 0) - (b.order || 0));
+
+      projectPhotos.forEach((p) => {
+        // Find in local array and update
+        const localIndex = newLocalPhotos.findIndex((lp) => lp.id === p.id);
+        if (localIndex > -1) {
+          newLocalPhotos[localIndex] = {
+            ...newLocalPhotos[localIndex],
+            order: currentOrderCounter,
+          };
+          updates.push({ id: p.id, order: currentOrderCounter });
+        }
+        currentOrderCounter++;
+      });
+    });
+
+    setLocalPhotos(newLocalPhotos); // Immediate UI update
+    // We don't auto-save to DB here to let user confirm, or we could.
+    // Let's just update local state, user must click "Save Order"
+  };
+
   // Drag Sorting Logic
   const [draggedItem, setDraggedItem] = useState(null);
 
@@ -1097,15 +1167,12 @@ const PhotosManager = ({
   const onDragOver = (e, targetItem) => {
     e.preventDefault();
     if (!draggedItem || draggedItem.id === targetItem.id) return;
-
-    // Check if in same project group to avoid confusion
     if (
       draggedItem.project !== targetItem.project ||
       draggedItem.year !== targetItem.year
     )
       return;
 
-    // Reorder local state
     const items = [...localPhotos];
     const fromIndex = items.findIndex((i) => i.id === draggedItem.id);
     const toIndex = items.findIndex((i) => i.id === targetItem.id);
@@ -1118,7 +1185,6 @@ const PhotosManager = ({
   };
 
   const handleSaveOrder = () => {
-    // Update all order fields based on current index
     const updates = localPhotos.map((p, index) => ({
       id: p.id,
       order: index + 1,
@@ -1129,6 +1195,7 @@ const PhotosManager = ({
 
   return (
     <div className="space-y-12">
+      {/* 1. Upload Area */}
       <div className="bg-neutral-900 border border-neutral-800 p-6 rounded-xl sticky top-0 z-20 shadow-xl">
         <h3 className="text-white font-bold mb-4 flex items-center gap-2">
           <UploadCloud className="w-5 h-5" /> Batch Upload
@@ -1197,21 +1264,39 @@ const PhotosManager = ({
               <h4 className="text-neutral-500 font-serif text-2xl border-b border-neutral-800 pb-2">
                 {year}
               </h4>
-              {Object.keys(grouped[year]).map((proj) => (
+              {Object.keys(grouped[year]).map((proj, projIndex) => (
                 <div
                   key={proj}
                   className="bg-neutral-900/30 p-6 rounded-xl border border-neutral-800"
                 >
-                  <div className="flex items-center gap-2 mb-4">
-                    <h5 className="text-white font-bold flex items-center gap-2">
-                      <FolderOpen size={16} /> {proj}
-                    </h5>
-                    <button
-                      onClick={() => handleRenameProject(proj, year)}
-                      className="text-neutral-500 hover:text-white p-1 rounded"
-                    >
-                      <Edit2 size={14} />
-                    </button>
+                  <div className="flex items-center justify-between mb-4">
+                    <div className="flex items-center gap-3">
+                      <h5 className="text-white font-bold flex items-center gap-2">
+                        <FolderOpen size={16} /> {proj}
+                      </h5>
+                      <button
+                        onClick={() => handleRenameProject(proj, year)}
+                        className="text-neutral-500 hover:text-white p-1 rounded"
+                      >
+                        <Edit2 size={14} />
+                      </button>
+                    </div>
+                    <div className="flex gap-2">
+                      <button
+                        onClick={() => moveProject(year, proj, "up")}
+                        className="p-1 bg-neutral-800 text-neutral-400 hover:text-white rounded"
+                        title="Move Project Up"
+                      >
+                        <ArrowUp size={14} />
+                      </button>
+                      <button
+                        onClick={() => moveProject(year, proj, "down")}
+                        className="p-1 bg-neutral-800 text-neutral-400 hover:text-white rounded"
+                        title="Move Project Down"
+                      >
+                        <ArrowDown size={14} />
+                      </button>
+                    </div>
                   </div>
                   <div className="grid grid-cols-4 md:grid-cols-6 lg:grid-cols-8 gap-4">
                     {grouped[year][proj].map((p) => (
@@ -1236,6 +1321,19 @@ const PhotosManager = ({
                         </button>
                       </div>
                     ))}
+                    {/* Add Photo Button for this project */}
+                    <div className="aspect-square relative group bg-neutral-900 border-2 border-dashed border-neutral-700 rounded flex flex-col items-center justify-center cursor-pointer hover:border-white hover:text-white text-neutral-500 transition-colors">
+                      <Plus size={24} />
+                      <span className="text-[10px] uppercase font-bold mt-1">
+                        Add
+                      </span>
+                      <input
+                        type="file"
+                        multiple
+                        className="absolute inset-0 opacity-0 cursor-pointer"
+                        onChange={(e) => handleProjectUpload(e, year, proj)}
+                      />
+                    </div>
                   </div>
                 </div>
               ))}
