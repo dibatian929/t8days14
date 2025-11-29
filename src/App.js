@@ -102,6 +102,7 @@ try {
 
 const appId = typeof __app_id !== "undefined" ? __app_id : "default-app-id";
 
+// 安全的集合获取函数
 const getPublicCollection = (colName) => {
   if (!db) throw new Error("Database not initialized");
   return collection(db, "artifacts", appId, "public", "data", colName);
@@ -539,6 +540,7 @@ const ImmersiveLightbox = ({
 
   return (
     <div className="fixed inset-0 z-[100] bg-black flex items-center justify-center animate-fade-in">
+      {/* Splash - Only show project title */}
       <div
         className={`absolute inset-0 z-[110] bg-black flex items-center justify-center pointer-events-none transition-opacity duration-1000 ${
           showSplash ? "opacity-100" : "opacity-0"
@@ -584,7 +586,8 @@ const ImmersiveLightbox = ({
 };
 
 const ProjectRow = ({ projectTitle, photos, onImageClick }) => {
-  const [isHovering, setIsHovering] = useState(false);
+  const [showOverlay, setShowOverlay] = useState(false);
+  const hoverTimeoutRef = useRef(null);
   const scrollContainerRef = useRef(null);
   const animationRef = useRef(null);
 
@@ -622,15 +625,28 @@ const ProjectRow = ({ projectTitle, photos, onImageClick }) => {
   };
 
   const handleMouseEnter = () => {
+    // Immediate activation for scrolling or slight visual feedback could go here if needed
+    // Clear any existing timeout (from quick exit/enter)
+    if (hoverTimeoutRef.current) clearTimeout(hoverTimeoutRef.current);
+
+    // Set delayed title appearance
     if (window.innerWidth >= 768) {
-      setTimeout(() => setIsHovering(true), 1000);
+      hoverTimeoutRef.current = setTimeout(() => setShowOverlay(true), 600);
     }
   };
+
   const handleMouseLeave = () => {
+    // Immediately clear timeout to prevent ghost title
+    if (hoverTimeoutRef.current) clearTimeout(hoverTimeoutRef.current);
+
+    // Immediately hide overlay
+    setShowOverlay(false);
+
+    // Stop scrolling
     if (animationRef.current) cancelAnimationFrame(animationRef.current);
-    setIsHovering(false);
   };
-  const isProjectTitleVisible = isHovering && window.innerWidth >= 768;
+
+  const isProjectTitleVisible = showOverlay && window.innerWidth >= 768;
 
   return (
     <div
@@ -640,7 +656,7 @@ const ProjectRow = ({ projectTitle, photos, onImageClick }) => {
       onMouseMove={handleMouseMove}
     >
       <div
-        className={`hidden md:flex absolute inset-0 z-10 items-center justify-start pl-4 pointer-events-none transition-opacity duration-700 ease-out ${
+        className={`hidden md:flex absolute inset-0 z-10 items-center justify-start pl-4 pointer-events-none transition-opacity duration-500 ease-out ${
           isProjectTitleVisible ? "opacity-100" : "opacity-0"
         }`}
       >
@@ -650,7 +666,7 @@ const ProjectRow = ({ projectTitle, photos, onImageClick }) => {
       </div>
       <div
         ref={scrollContainerRef}
-        className={`flex overflow-x-auto no-scrollbar gap-0.5 md:gap-1 transition-opacity duration-700 ease-out ${
+        className={`flex overflow-x-auto no-scrollbar gap-0.5 md:gap-1 transition-opacity duration-500 ease-out ${
           isProjectTitleVisible ? "opacity-30" : "opacity-100"
         }`}
         style={{ scrollBehavior: "auto" }}
