@@ -462,6 +462,12 @@ const AboutPage = ({ profile, lang, onClose }) => {
             </div>
           </div>
         </div>
+        <button
+          onClick={onClose}
+          className="absolute top-6 right-6 z-50 text-neutral-500 hover:text-white transition-colors p-4"
+        >
+          <X className="w-6 h-6" />
+        </button>
       </div>
     </div>
   );
@@ -1426,8 +1432,16 @@ const AdminDashboard = ({
 };
 
 const MainView = ({ photos, settings, onLoginClick, isOffline }) => {
-  const [view, setView] = useState("home");
-  const [showAbout, setShowAbout] = useState(false);
+  // Helper to get initial state from URL
+  const getInitialState = () => {
+    const path = window.location.pathname;
+    if (path === "/about") return { view: "home", showAbout: true };
+    if (path === "/works") return { view: "works", showAbout: false };
+    return { view: "home", showAbout: false };
+  };
+
+  const [state, setState] = useState(getInitialState);
+  const { view, showAbout } = state;
   const [lightboxOpen, setLightboxOpen] = useState(false);
   const [initialLightboxIndex, setInitialLightboxIndex] = useState(0);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
@@ -1455,17 +1469,39 @@ const MainView = ({ photos, settings, onLoginClick, isOffline }) => {
     slides[currentSlideIndex]?.title || profile.brandName;
   const visiblePhotos = photos.filter((p) => p.isVisible !== false);
 
+  // Sync state with URL on popstate
+  useEffect(() => {
+    const handlePopState = () => {
+      setState(getInitialState());
+    };
+    window.addEventListener("popstate", handlePopState);
+    return () => window.removeEventListener("popstate", handlePopState);
+  }, []);
+
+  const navigate = (path, newView, newShowAbout) => {
+    window.history.pushState({}, "", path);
+    setState({ view: newView, showAbout: newShowAbout });
+  };
+
   const handleNavClick = (target) => {
     setMobileMenuOpen(false);
     if (target === "home") {
-      setView("home");
-      setShowAbout(false);
+      navigate("/", "home", false);
     } else if (target === "works") {
-      setView("works");
-      setShowAbout(false);
+      navigate("/works", "works", false);
     } else if (target === "about") {
-      setShowAbout(true);
+      // If user is on works, keep works background but show about overlay?
+      // For simplicity, reset to home background or keep current.
+      // Let's default to home background for clean URL logic '/about'
+      navigate("/about", "home", true);
     }
+  };
+
+  const handleCloseAbout = () => {
+    // Return to home URL or just close overlay?
+    // Usually closing a modal goes back.
+    // If we were at /about, going back to / is appropriate.
+    navigate("/", "home", false);
   };
 
   const handleImageClick = (item, projectPhotos) => {
@@ -1532,11 +1568,7 @@ const MainView = ({ photos, settings, onLoginClick, isOffline }) => {
         />
       )}
       {showAbout && (
-        <AboutPage
-          profile={profile}
-          lang={lang}
-          onClose={() => setShowAbout(false)}
-        />
+        <AboutPage profile={profile} lang={lang} onClose={handleCloseAbout} />
       )}
       {lightboxOpen && (
         <ImmersiveLightbox
