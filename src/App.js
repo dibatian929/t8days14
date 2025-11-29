@@ -43,6 +43,7 @@ import {
   ArrowUp,
   ArrowDown,
   Globe2,
+  GripVertical,
 } from "lucide-react";
 import { initializeApp } from "firebase/app";
 import {
@@ -131,7 +132,7 @@ const slugify = (text) => {
     .replace(/-+$/, "");
 };
 
-// 通用图片压缩函数：支持自定义最大宽度和质量
+// 通用图片压缩函数
 const compressImage = async (file, maxWidth = 500, quality = 0.7) => {
   return new Promise((resolve) => {
     const reader = new FileReader();
@@ -141,7 +142,6 @@ const compressImage = async (file, maxWidth = 500, quality = 0.7) => {
       img.src = event.target.result;
       img.onload = () => {
         const canvas = document.createElement("canvas");
-        // 如果原图比限制宽度小，就不放大，保持原样
         let targetWidth = img.width;
         let targetHeight = img.height;
 
@@ -150,7 +150,6 @@ const compressImage = async (file, maxWidth = 500, quality = 0.7) => {
           targetWidth = maxWidth;
           targetHeight = img.height * scaleSize;
         } else {
-          // 小图不压缩，直接返回
           resolve(null);
           return;
         }
@@ -255,7 +254,6 @@ const DEFAULT_SETTINGS = {
 
 // --- 2. 基础组件 ---
 
-// Meta Updater Component
 const MetaUpdater = ({ profile }) => {
   useEffect(() => {
     if (profile.siteTitle) document.title = profile.siteTitle;
@@ -466,6 +464,8 @@ const HeroSlideshow = ({ slides, onIndexChange, onLinkClick }) => {
 
   if (!slides || slides.length === 0) return null;
 
+  const currentSlide = slides[currentIndex];
+
   const handleSlideClick = (slide) => {
     if (slide.link) {
       if (onLinkClick) {
@@ -501,7 +501,6 @@ const HeroSlideshow = ({ slides, onIndexChange, onLinkClick }) => {
               />
             ) : (
               <div className="relative w-full h-full">
-                {/* 优化核心：使用原生 img 标签替代背景图，启用 fetchPriority */}
                 <img
                   src={slide.url}
                   alt={slide.title}
@@ -520,10 +519,38 @@ const HeroSlideshow = ({ slides, onIndexChange, onLinkClick }) => {
           </div>
         );
       })}
+
+      {/* Water Drop Indicator */}
+      {slides.length > 1 && (
+        <div className="absolute bottom-8 left-1/2 -translate-x-1/2 z-20 flex items-center justify-center">
+          <div className="relative flex items-center gap-3 p-1.5 bg-black/20 backdrop-blur-sm rounded-full border border-white/5">
+            {/* The moving 'water drop' - using absolute position for fluid motion */}
+            <div
+              className="absolute top-1/2 -translate-y-1/2 h-2 bg-white rounded-full shadow-[0_0_8px_rgba(255,255,255,0.5)] transition-all duration-500 cubic-bezier(0.25, 1, 0.5, 1)"
+              style={{
+                width: "8px", // Base size
+                left: `${6 + currentIndex * 20}px`, // Calculate left based on padding + gap + size
+              }}
+            />
+            {slides.map((_, idx) => (
+              <button
+                key={idx}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setCurrentIndex(idx);
+                }}
+                className="w-2 h-2 rounded-full bg-white/20 hover:bg-white/40 transition-colors cursor-pointer block"
+                aria-label={`Go to slide ${idx + 1}`}
+              />
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   );
 };
 
+// ... (AboutPage, ImmersiveLightbox, ProjectRow, WorksPage components remain unchanged) ...
 const AboutPage = ({ profile, lang, onClose }) => {
   const content = {
     ...DEFAULT_PROFILE.content[lang],
@@ -623,7 +650,6 @@ const ImmersiveLightbox = ({
   const [loading, setLoading] = useState(true);
   const currentImage = images[currentIndex];
 
-  // 预加载下一张图片
   useEffect(() => {
     if (images.length > 1) {
       const nextIndex = (currentIndex + 1) % images.length;
@@ -674,19 +700,16 @@ const ImmersiveLightbox = ({
           {currentImage.project}
         </h2>
       </div>
-
       <button
         onClick={onClose}
         className="absolute top-6 right-6 z-50 text-neutral-500 hover:text-white transition-colors p-4"
       >
         <X className="w-6 h-6" />
       </button>
-
       <div
         className="absolute inset-0 z-20"
         onClick={() => changeImage("next")}
       />
-
       <div className="relative z-10 w-full h-full flex items-center justify-center p-4 pointer-events-none">
         {loading && (
           <div className="absolute inset-0 flex items-center justify-center">
@@ -702,7 +725,6 @@ const ImmersiveLightbox = ({
           onLoad={() => setLoading(false)}
         />
       </div>
-
       <div className="absolute bottom-8 left-8 z-30 pointer-events-none">
         <div className="bg-black/0 backdrop-blur-none p-4 rounded-sm">
           <div className="text-white/40 font-serif font-thin text-xs tracking-widest mb-1">
@@ -784,7 +806,6 @@ const ProjectRow = ({ projectTitle, photos, onImageClick }) => {
         </h3>
         <div className="h-[1px] flex-grow bg-white/10"></div>
       </div>
-
       <div
         className={`hidden md:flex absolute inset-0 z-10 items-center justify-start pl-4 pointer-events-none transition-opacity duration-500 ease-out ${
           isProjectTitleVisible ? "opacity-100" : "opacity-0"
@@ -794,11 +815,9 @@ const ProjectRow = ({ projectTitle, photos, onImageClick }) => {
           {projectTitle}
         </h3>
       </div>
-
       <div className="md:hidden absolute right-0 top-0 bottom-8 w-12 bg-gradient-to-l from-black/50 to-transparent z-10 pointer-events-none flex items-center justify-center">
         <ChevronRight className="text-white/50 animate-pulse" size={20} />
       </div>
-
       <div
         ref={scrollContainerRef}
         className={`flex overflow-x-auto no-scrollbar gap-1 md:gap-1 transition-opacity duration-500 ease-out ${
@@ -838,11 +857,9 @@ const WorksPage = ({ photos, profile, ui, onImageClick }) => {
     acc[year][project].push(photo);
     return acc;
   }, {});
-
   const sortedYears = Object.keys(groupedByYearAndProject).sort(
     (a, b) => b - a
   );
-
   return (
     <div className="min-h-screen bg-neutral-950 text-white animate-fade-in-up">
       <div className="pt-28 md:pt-32 pb-32 px-4 md:px-12 container mx-auto max-w-[1920px]">
@@ -930,11 +947,11 @@ const ProfileSettings = ({ settings, onUpdate }) => {
 
   return (
     <div className="max-w-3xl mx-auto space-y-8 pb-12">
+      {/* Branding Section */}
       <div className="bg-neutral-900 p-6 rounded-xl border border-neutral-800 space-y-6">
         <h3 className="text-lg font-bold text-white flex items-center gap-2">
           <Globe2 className="w-5 h-5" /> Site Identity & Branding
         </h3>
-
         <div className="flex gap-6">
           <div className="w-1/3">
             <label className="block text-xs text-neutral-500 uppercase mb-2">
@@ -993,7 +1010,6 @@ const ProfileSettings = ({ settings, onUpdate }) => {
             </label>
           </div>
         </div>
-
         <div className="space-y-3">
           <div>
             <label className="text-xs text-neutral-500 uppercase">
@@ -1125,7 +1141,6 @@ const ProfileSettings = ({ settings, onUpdate }) => {
           />
         </div>
       </div>
-
       <button
         onClick={handleSave}
         className="w-full bg-white text-black font-bold py-3 rounded hover:bg-neutral-200 transition-colors"
@@ -1139,13 +1154,14 @@ const ProfileSettings = ({ settings, onUpdate }) => {
 const SlidesSettings = ({ settings, onUpdate }) => {
   const [slides, setSlides] = useState(settings.profile.heroSlides || []);
   const [form, setForm] = useState({ title: "", link: "", url: "" });
+  const [editingSlide, setEditingSlide] = useState(null); // Added state for editing
   const [uploading, setUploading] = useState(false);
+  const [draggedSlide, setDraggedSlide] = useState(null); // State for dragging
 
   const handleFileUpload = async (e) => {
     if (!e.target.files[0]) return;
     setUploading(true);
     try {
-      // 轮播图也进行压缩，但尺寸大一些 (1920px)
       const file = await compressImage(e.target.files[0], 1920, 0.85);
       const url = await uploadFileToStorage(
         file || e.target.files[0],
@@ -1160,7 +1176,17 @@ const SlidesSettings = ({ settings, onUpdate }) => {
 
   const handleSaveSlide = () => {
     if (!form.url) return alert("Please upload an image");
-    const newSlides = [...slides, { ...form, type: "image" }];
+
+    let newSlides = [...slides];
+    if (editingSlide !== null) {
+      // Update existing
+      newSlides[editingSlide] = { ...form, type: "image" };
+      setEditingSlide(null);
+    } else {
+      // Add new
+      newSlides.push({ ...form, type: "image" });
+    }
+
     setSlides(newSlides);
     setForm({ title: "", link: "", url: "" });
     onUpdate({
@@ -1169,19 +1195,63 @@ const SlidesSettings = ({ settings, onUpdate }) => {
     });
   };
 
+  const handleEdit = (idx) => {
+    setEditingSlide(idx);
+    setForm(slides[idx]);
+  };
+
   const handleDelete = (idx) => {
-    const newSlides = slides.filter((_, i) => i !== idx);
-    setSlides(newSlides);
+    if (window.confirm("Delete this slide?")) {
+      const newSlides = slides.filter((_, i) => i !== idx);
+      setSlides(newSlides);
+      onUpdate({
+        ...settings,
+        profile: { ...settings.profile, heroSlides: newSlides },
+      });
+    }
+  };
+
+  const handleCancelEdit = () => {
+    setEditingSlide(null);
+    setForm({ title: "", link: "", url: "" });
+  };
+
+  // Drag and Drop Handlers for Slides
+  const onDragStart = (e, index) => {
+    setDraggedSlide(slides[index]);
+  };
+
+  const onDragOver = (e, index) => {
+    e.preventDefault();
+    const draggedOverItem = slides[index];
+    if (draggedSlide === draggedOverItem) return;
+
+    const items = [...slides];
+    const draggedIdx = items.indexOf(draggedSlide);
+    const overIdx = index;
+
+    // Move item in array
+    items.splice(draggedIdx, 1);
+    items.splice(overIdx, 0, draggedSlide);
+
+    setSlides(items);
+  };
+
+  const onDragEnd = () => {
+    setDraggedSlide(null);
+    // Save new order
     onUpdate({
       ...settings,
-      profile: { ...settings.profile, heroSlides: newSlides },
+      profile: { ...settings.profile, heroSlides: slides },
     });
   };
 
   return (
     <div className="max-w-4xl mx-auto space-y-8">
       <div className="bg-neutral-900 p-6 rounded-xl border border-neutral-800">
-        <h3 className="text-lg font-bold text-white mb-4">Add New Slide</h3>
+        <h3 className="text-lg font-bold text-white mb-4">
+          {editingSlide !== null ? "Edit Slide" : "Add New Slide"}
+        </h3>
         <div className="flex flex-col md:flex-row gap-6">
           <div className="w-full md:w-1/3 aspect-video bg-black rounded border border-neutral-700 flex items-center justify-center relative overflow-hidden group">
             {form.url ? (
@@ -1217,13 +1287,23 @@ const SlidesSettings = ({ settings, onUpdate }) => {
               value={form.link}
               onChange={(e) => setForm({ ...form, link: e.target.value })}
             />
-            <button
-              onClick={handleSaveSlide}
-              disabled={!form.url}
-              className="px-6 py-2 bg-white text-black font-bold rounded hover:bg-neutral-200 disabled:opacity-50"
-            >
-              Add Slide
-            </button>
+            <div className="flex gap-2">
+              <button
+                onClick={handleSaveSlide}
+                disabled={!form.url}
+                className="px-6 py-2 bg-white text-black font-bold rounded hover:bg-neutral-200 disabled:opacity-50"
+              >
+                {editingSlide !== null ? "Update Slide" : "Add Slide"}
+              </button>
+              {editingSlide !== null && (
+                <button
+                  onClick={handleCancelEdit}
+                  className="px-6 py-2 bg-neutral-800 text-white font-bold rounded hover:bg-neutral-700"
+                >
+                  Cancel
+                </button>
+              )}
+            </div>
           </div>
         </div>
       </div>
@@ -1232,8 +1312,15 @@ const SlidesSettings = ({ settings, onUpdate }) => {
         {slides.map((slide, idx) => (
           <div
             key={idx}
-            className="bg-neutral-900 p-4 rounded-xl border border-neutral-800 flex gap-4 items-center"
+            draggable
+            onDragStart={(e) => onDragStart(e, idx)}
+            onDragOver={(e) => onDragOver(e, idx)}
+            onDragEnd={onDragEnd}
+            className="bg-neutral-900 p-4 rounded-xl border border-neutral-800 flex gap-4 items-center cursor-move group"
           >
+            <div className="text-neutral-500">
+              <GripVertical size={20} />
+            </div>
             <img
               src={slide.url}
               className="w-24 h-16 object-cover rounded bg-black"
@@ -1246,12 +1333,20 @@ const SlidesSettings = ({ settings, onUpdate }) => {
                 {slide.link ? `Links to: ${slide.link}` : "No link"}
               </div>
             </div>
-            <button
-              onClick={() => handleDelete(idx)}
-              className="p-2 bg-red-900/30 text-red-500 rounded hover:bg-red-900/50"
-            >
-              <Trash2 size={16} />
-            </button>
+            <div className="flex gap-2 opacity-100 md:opacity-0 group-hover:opacity-100 transition-opacity">
+              <button
+                onClick={() => handleEdit(idx)}
+                className="p-2 bg-neutral-800 text-neutral-400 hover:text-white rounded"
+              >
+                <Edit2 size={16} />
+              </button>
+              <button
+                onClick={() => handleDelete(idx)}
+                className="p-2 bg-red-900/30 text-red-500 rounded hover:bg-red-900/50"
+              >
+                <Trash2 size={16} />
+              </button>
+            </div>
           </div>
         ))}
       </div>
@@ -1259,12 +1354,15 @@ const SlidesSettings = ({ settings, onUpdate }) => {
   );
 };
 
+// ... PhotosManager, MainView, etc. remain the same
+
 const PhotosManager = ({
   photos,
   onAddPhoto,
   onDeletePhoto,
   onBatchUpdate,
 }) => {
+  // ... (Existing PhotosManager code unchanged)
   const [uploading, setUploading] = useState(false);
   const [files, setFiles] = useState([]);
   const [uploadYear, setUploadYear] = useState(
@@ -1322,7 +1420,6 @@ const PhotosManager = ({
     try {
       const promises = Array.from(files).map(async (file, idx) => {
         const timestamp = Date.now();
-        // 1. 缩略图
         const thumbnailFile = await compressImage(file, 500, 0.7);
         let thumbnailUrl = "";
         if (thumbnailFile) {
@@ -1330,7 +1427,6 @@ const PhotosManager = ({
           thumbnailUrl = await uploadFileToStorage(thumbnailFile, thumbPath);
         }
 
-        // 2. 原图 (不压缩，保持高质量)
         const path = `photos/${uploadYear}/${uploadProject.trim()}/${timestamp}_${idx}`;
         const url = await uploadFileToStorage(file, path);
 
@@ -1600,7 +1696,6 @@ const PhotosManager = ({
                         onDragOver={(e) => onDragOver(e, p)}
                         className="aspect-square relative group bg-black rounded border border-neutral-700 overflow-hidden cursor-move"
                       >
-                        {/* 后台也使用缩略图以提高管理页面的性能 */}
                         <img
                           src={p.thumbnailUrl || p.url}
                           className="w-full h-full object-cover opacity-80 group-hover:opacity-100 transition-opacity"
@@ -1637,6 +1732,8 @@ const PhotosManager = ({
   );
 };
 
+// ... AdminDashboard, MainView, App (remain the same as prev but ensuring correct exports)
+
 const AdminDashboard = ({
   photos,
   settings,
@@ -1649,7 +1746,6 @@ const AdminDashboard = ({
   const [tab, setTab] = useState("photos");
   return (
     <div className="min-h-screen bg-neutral-900 text-neutral-200 font-sans flex flex-col">
-      {/* Top Header for Admin */}
       <div className="h-16 border-b border-neutral-800 flex items-center justify-between px-6 bg-neutral-950">
         <h1 className="text-xl font-bold text-white flex items-center gap-2 font-serif">
           <Settings className="w-5 h-5" /> T8DAY CMS
@@ -1734,7 +1830,7 @@ const MainView = ({ photos, settings, onLoginClick, isOffline }) => {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [currentSlideIndex, setCurrentSlideIndex] = useState(0);
   const [lang, setLang] = useState("en");
-  const [lightboxImages, setLightboxImages] = useState([]); // Isolated images for lightbox
+  const [lightboxImages, setLightboxImages] = useState([]);
 
   const rawProfile = settings?.profile || {};
   const profile = {
@@ -1765,17 +1861,15 @@ const MainView = ({ photos, settings, onLoginClick, isOffline }) => {
     return () => window.removeEventListener("popstate", handlePopState);
   }, []);
 
-  // Handle direct URL access to projects (e.g. /works/huahin-2024/01)
+  // Handle direct URL access
   useEffect(() => {
     if (visiblePhotos.length === 0) return;
 
     const pathParts = window.location.pathname.split("/").filter(Boolean);
-    // Expecting /works/project-slug/image-index
     if (pathParts.length >= 2 && pathParts[0] === "works") {
-      const projectSlug = pathParts[1]; // e.g. "huahin-2024"
-      const imageIndexStr = pathParts[2] || "01"; // Default to 01 if missing
+      const projectSlug = pathParts[1];
+      const imageIndexStr = pathParts[2] || "01";
 
-      // Find project photos matching slug
       const targetPhotos = visiblePhotos.filter((p) => {
         const pSlug = slugify(`${p.project} ${p.year}`);
         const pSlugSimple = slugify(p.project);
@@ -1783,11 +1877,9 @@ const MainView = ({ photos, settings, onLoginClick, isOffline }) => {
       });
 
       if (targetPhotos.length > 0) {
-        // Sort
         targetPhotos.sort((a, b) => (a.order || 999) - (b.order || 999));
 
-        // Find index
-        const imageIndex = parseInt(imageIndexStr, 10) - 1; // 1-based to 0-based
+        const imageIndex = parseInt(imageIndexStr, 10) - 1;
         const safeIndex = isNaN(imageIndex)
           ? 0
           : Math.max(0, Math.min(imageIndex, targetPhotos.length - 1));
@@ -1795,11 +1887,10 @@ const MainView = ({ photos, settings, onLoginClick, isOffline }) => {
         setLightboxImages(targetPhotos);
         setInitialLightboxIndex(safeIndex);
         setLightboxOpen(true);
-        // Ensure background is works
         setState({ view: "works", showAbout: false });
       }
     }
-  }, [visiblePhotos]); // Run when photos loaded
+  }, [visiblePhotos]);
 
   const navigate = (path, newView, newShowAbout) => {
     window.history.pushState({}, "", path);
@@ -1822,19 +1913,13 @@ const MainView = ({ photos, settings, onLoginClick, isOffline }) => {
   };
 
   const handleLinkNavigation = (link) => {
-    // Check if internal link by comparing origin
     try {
       const url = new URL(link, window.location.origin);
       if (url.origin === window.location.origin) {
-        // It's internal
         window.history.pushState({}, "", url.pathname);
-
-        // Trigger manual update
         const pathParts = url.pathname.split("/").filter(Boolean);
         if (pathParts[0] === "works") {
           setState({ view: "works", showAbout: false });
-
-          // Re-run the logic from useEffect for the new path
           const projectSlug = pathParts[1];
           if (projectSlug) {
             const targetPhotos = visiblePhotos.filter((p) => {
@@ -1874,7 +1959,6 @@ const MainView = ({ photos, settings, onLoginClick, isOffline }) => {
       setInitialLightboxIndex(index);
       setLightboxOpen(true);
 
-      // Update URL
       const slug = slugify(`${item.project} ${item.year}`);
       const newPath = `/works/${slug}/${(index + 1)
         .toString()
@@ -1884,7 +1968,6 @@ const MainView = ({ photos, settings, onLoginClick, isOffline }) => {
   };
 
   const handleLightboxIndexChange = (newIndex) => {
-    // Update URL without pushing history (replace)
     if (lightboxImages.length > 0) {
       const item = lightboxImages[newIndex];
       const slug = slugify(`${item.project} ${item.year}`);
@@ -1972,8 +2055,6 @@ const MainView = ({ photos, settings, onLoginClick, isOffline }) => {
     </div>
   );
 };
-
-// --- Main App Logic ---
 
 class ErrorBoundaryWrapper extends Component {
   constructor(props) {
