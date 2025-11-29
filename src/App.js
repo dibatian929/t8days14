@@ -119,6 +119,18 @@ const uploadFileToStorage = async (file, path) => {
   return await getDownloadURL(snapshot.ref);
 };
 
+// 工具函数：生成 URL slug
+const slugify = (text) => {
+  return text
+    .toString()
+    .toLowerCase()
+    .replace(/\s+/g, "-") // Replace spaces with -
+    .replace(/[^\w\-]+/g, "") // Remove all non-word chars
+    .replace(/\-\-+/g, "-") // Replace multiple - with single -
+    .replace(/^-+/, "") // Trim - from start
+    .replace(/-+$/, ""); // Trim - from end
+};
+
 // --- 1. 样式与默认配置 ---
 const styleSheet = document.createElement("style");
 styleSheet.innerText = `
@@ -473,7 +485,12 @@ const AboutPage = ({ profile, lang, onClose }) => {
   );
 };
 
-const ImmersiveLightbox = ({ initialIndex, images, onClose }) => {
+const ImmersiveLightbox = ({
+  initialIndex,
+  images,
+  onClose,
+  onIndexChange,
+}) => {
   const [currentIndex, setCurrentIndex] = useState(initialIndex);
   const [showSplash, setShowSplash] = useState(true);
   const currentImage = images[currentIndex];
@@ -486,6 +503,7 @@ const ImmersiveLightbox = ({ initialIndex, images, onClose }) => {
       nextIndex = (currentIndex - 1 + images.length) % images.length;
     }
     setCurrentIndex(nextIndex);
+    if (onIndexChange) onIndexChange(nextIndex);
   };
 
   useEffect(() => {
@@ -1478,6 +1496,47 @@ const MainView = ({ photos, settings, onLoginClick, isOffline }) => {
     return () => window.removeEventListener("popstate", handlePopState);
   }, []);
 
+  // Handle direct URL access to projects (e.g. /works/huahin-2024/01)
+  useEffect(() => {
+    if (visiblePhotos.length === 0) return;
+
+    const pathParts = window.location.pathname.split("/").filter(Boolean);
+    // Expecting /works/project-slug/image-index
+    if (pathParts.length >= 2 && pathParts[0] === "works") {
+      const projectSlug = pathParts[1]; // e.g. "huahin-2024"
+      const imageIndexStr = pathParts[2] || "01"; // Default to 01 if missing
+
+      // Find project photos matching slug
+      // We need to match slug back to project name.
+      // Simple strategy: check all projects, slugify them, match.
+      // Or check project + year combo.
+      // Since photos are flat, let's find matching photos.
+
+      const targetPhotos = visiblePhotos.filter((p) => {
+        const pSlug = slugify(`${p.project} ${p.year}`);
+        const pSlugSimple = slugify(p.project);
+        return pSlug === projectSlug || pSlugSimple === projectSlug;
+      });
+
+      if (targetPhotos.length > 0) {
+        // Sort
+        targetPhotos.sort((a, b) => (a.order || 999) - (b.order || 999));
+
+        // Find index
+        const imageIndex = parseInt(imageIndexStr, 10) - 1; // 1-based to 0-based
+        const safeIndex = isNaN(imageIndex)
+          ? 0
+          : Math.max(0, Math.min(imageIndex, targetPhotos.length - 1));
+
+        setLightboxImages(targetPhotos);
+        setInitialLightboxIndex(safeIndex);
+        setLightboxOpen(true);
+        // Ensure background is works
+        setState({ view: "works", showAbout: false });
+      }
+    }
+  }, [visiblePhotos]); // Run when photos loaded
+
   const navigate = (path, newView, newShowAbout) => {
     window.history.pushState({}, "", path);
     setState({ view: newView, showAbout: newShowAbout });
@@ -1511,7 +1570,32 @@ const MainView = ({ photos, settings, onLoginClick, isOffline }) => {
       setLightboxImages(projectPhotos);
       setInitialLightboxIndex(index);
       setLightboxOpen(true);
+
+      // Update URL
+      const slug = slugify(`${item.project} ${item.year}`);
+      const newPath = `/works/${slug}/${(index + 1)
+        .toString()
+        .padStart(2, "0")}`;
+      window.history.pushState({}, "", newPath);
     }
+  };
+
+  const handleLightboxIndexChange = (newIndex) => {
+    // Update URL without pushing history (replace)
+    if (lightboxImages.length > 0) {
+      const item = lightboxImages[newIndex];
+      const slug = slugify(`${item.project} ${item.year}`);
+      const newPath = `/works/${slug}/${(newIndex + 1)
+        .toString()
+        .padStart(2, "0")}`;
+      window.history.replaceState({}, "", newPath);
+    }
+  };
+
+  const handleLightboxClose = () => {
+    setLightboxOpen(false);
+    // Revert URL to /works
+    window.history.pushState({}, "", "/works");
   };
 
   return (
@@ -1574,7 +1658,8 @@ const MainView = ({ photos, settings, onLoginClick, isOffline }) => {
         <ImmersiveLightbox
           initialIndex={initialLightboxIndex}
           images={lightboxImages}
-          onClose={() => setLightboxOpen(false)}
+          onClose={handleLightboxClose}
+          onIndexChange={handleLightboxIndexChange}
         />
       )}
     </div>
