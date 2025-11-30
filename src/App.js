@@ -24,11 +24,11 @@ import {
   Play,
   Pause,
   Edit2,
-  Globe, // 使用标准 Globe
+  Globe,
   Music2,
   ArrowLeft,
   ChevronLeft,
-  Move, // 替换 GripVertical 为 Move
+  Move,
   Eye,
   EyeOff,
   ChevronDown,
@@ -42,6 +42,8 @@ import {
   Youtube,
   ArrowUp,
   ArrowDown,
+  Globe2,
+  GripVertical,
 } from "lucide-react";
 import { initializeApp } from "firebase/app";
 import {
@@ -127,8 +129,7 @@ const slugify = (text) => {
     .replace(/-+$/, "");
 };
 
-// 核心优化：全自动图片压缩
-const compressImage = async (file, maxWidth = 1920, quality = 0.85) => {
+const compressImage = async (file, maxWidth = 400, quality = 0.6) => {
   return new Promise((resolve) => {
     const reader = new FileReader();
     reader.readAsDataURL(file);
@@ -150,7 +151,6 @@ const compressImage = async (file, maxWidth = 1920, quality = 0.85) => {
               height = maxWidth;
             }
           } else {
-            // 如果图片很小，直接返回原图，避免不必要的处理
             resolve(file);
             return;
           }
@@ -626,6 +626,7 @@ const AboutPage = ({ profile, lang, onClose }) => {
   );
 };
 
+// ImmersiveLightbox: 强制显示修复版
 const ImmersiveLightbox = ({
   initialIndex,
   images,
@@ -634,12 +635,26 @@ const ImmersiveLightbox = ({
 }) => {
   const [currentIndex, setCurrentIndex] = useState(initialIndex);
   const [isHighResLoaded, setIsHighResLoaded] = useState(false);
+  const highResRef = useRef(null);
   const currentImage = images[currentIndex];
 
+  // 强制检查缓存和重置状态
   useEffect(() => {
     setIsHighResLoaded(false);
 
-    // Preload next
+    // 秒开检查：如果图片已经在缓存中，立刻标记为加载完成
+    if (highResRef.current && highResRef.current.complete) {
+      setIsHighResLoaded(true);
+    } else {
+      // 保险丝：0.1秒后强制显示图片（即使 onLoad 还没触发，避免一直透明）
+      // 这解决了 onLoad 偶发失效导致图片不显示的问题
+      const forceShowTimer = setTimeout(() => {
+        setIsHighResLoaded(true);
+      }, 100);
+      return () => clearTimeout(forceShowTimer);
+    }
+
+    // 预加载下一张
     if (images.length > 1) {
       const nextIndex = (currentIndex + 1) % images.length;
       const img = new Image();
@@ -676,11 +691,7 @@ const ImmersiveLightbox = ({
 
   return (
     <div className="fixed inset-0 z-[100] bg-black flex items-center justify-center animate-fade-in">
-      <div className="absolute top-6 left-0 right-0 text-center pointer-events-none z-10">
-        <h2 className="text-xl font-serif text-white/90 tracking-[0.3em] uppercase drop-shadow-lg">
-          {currentImage.project}
-        </h2>
-      </div>
+      {/* 移除顶部标题 */}
 
       <button
         onClick={onClose}
@@ -695,20 +706,25 @@ const ImmersiveLightbox = ({
       />
 
       <div className="relative z-10 w-full h-full flex items-center justify-center p-4 pointer-events-none">
+        {/* 1. 占位图层 (永远存在，不透明度1，作为底色) */}
         <img
           src={placeholderSrc}
-          className={`${imgClassName} object-contain absolute filter blur-xl scale-105 opacity-50 transition-opacity duration-500`}
+          className={`${imgClassName} object-contain absolute filter blur-xl scale-105`}
+          style={{ opacity: 1 }} // 确保占位图始终可见
           alt="placeholder"
         />
+
+        {/* 2. 高清图层 (加载完成后淡入覆盖) */}
         <img
+          ref={highResRef}
           src={currentImage.url}
           alt="Photo"
-          className={`${imgClassName} object-contain shadow-2xl relative z-10 transition-opacity duration-700 ease-out ${
-            isHighResLoaded ? "opacity-100" : "opacity-0"
-          }`}
+          className={`${imgClassName} object-contain shadow-2xl relative z-10 transition-opacity duration-700 ease-out`}
+          style={{ opacity: isHighResLoaded ? 1 : 0 }}
           onLoad={() => setIsHighResLoaded(true)}
-          onError={() => setIsHighResLoaded(true)}
+          onError={() => setIsHighResLoaded(true)} // 错误兜底：出错了也显示（显示裂图总比白屏好）
         />
+        {/* 彻底移除了 Loading 组件 */}
       </div>
 
       <div className="absolute bottom-8 left-8 z-30 pointer-events-none">
@@ -938,7 +954,7 @@ const ProfileSettings = ({ settings, onUpdate }) => {
     <div className="max-w-3xl mx-auto space-y-8 pb-12">
       <div className="bg-neutral-900 p-6 rounded-xl border border-neutral-800 space-y-6">
         <h3 className="text-lg font-bold text-white flex items-center gap-2">
-          <Globe className="w-5 h-5" /> Site Identity & Branding
+          <Globe2 className="w-5 h-5" /> Site Identity & Branding
         </h3>
         <div className="flex gap-6">
           <div className="w-1/3">
@@ -1747,8 +1763,6 @@ const MainView = ({ photos, settings, onLoginClick, isOffline }) => {
         const pathParts = url.pathname.split("/").filter(Boolean);
         if (pathParts[0] === "works") {
           setState({ view: "works", showAbout: false });
-
-          // Re-run the logic from useEffect for the new path
           const projectSlug = pathParts[1];
           if (projectSlug) {
             const targetPhotos = visiblePhotos.filter((p) => {
@@ -1798,7 +1812,6 @@ const MainView = ({ photos, settings, onLoginClick, isOffline }) => {
   };
 
   const handleLightboxIndexChange = (newIndex) => {
-    // Update URL without pushing history (replace)
     if (lightboxImages.length > 0) {
       const item = lightboxImages[newIndex];
       const slug = slugify(`${item.project} ${item.year}`);
