@@ -43,7 +43,6 @@ import {
   ArrowUp,
   ArrowDown,
   Globe2,
-  GripVertical,
 } from "lucide-react";
 import { initializeApp } from "firebase/app";
 import {
@@ -71,8 +70,6 @@ import { getStorage, ref, uploadBytes, getDownloadURL } from "firebase/storage";
 
 // --- 0. 系统初始化 ---
 
-console.log("System initializing...");
-
 const MANUAL_CONFIG = {
   apiKey: "AIzaSyCE-gHGrVGjGLDdBgOj_KSlH5rZqBtQrXM",
   authDomain: "my-t8day.firebaseapp.com",
@@ -97,7 +94,6 @@ try {
   db = getFirestore(app);
   storage = getStorage(app);
   isFirebaseInitialized = true;
-  console.log("Firebase initialized");
 } catch (e) {
   console.error("Firebase Init Error:", e);
 }
@@ -131,7 +127,7 @@ const slugify = (text) => {
     .replace(/-+$/, "");
 };
 
-const compressImage = async (file, maxWidth = 500, quality = 0.7) => {
+const compressImage = async (file, maxWidth = 400, quality = 0.6) => {
   return new Promise((resolve) => {
     const reader = new FileReader();
     reader.readAsDataURL(file);
@@ -139,41 +135,43 @@ const compressImage = async (file, maxWidth = 500, quality = 0.7) => {
       const img = new Image();
       img.src = event.target.result;
       img.onload = () => {
-        const canvas = document.createElement("canvas");
-        let targetWidth = img.width;
-        let targetHeight = img.height;
+        try {
+          const canvas = document.createElement("canvas");
+          let targetWidth = img.width;
+          let targetHeight = img.height;
 
-        if (img.width > maxWidth) {
-          const scaleSize = maxWidth / img.width;
-          targetWidth = maxWidth;
-          targetHeight = img.height * scaleSize;
-        } else {
-          resolve(null);
-          return;
+          if (img.width > maxWidth) {
+            const scaleSize = maxWidth / img.width;
+            targetWidth = maxWidth;
+            targetHeight = img.height * scaleSize;
+          }
+
+          canvas.width = targetWidth;
+          canvas.height = targetHeight;
+
+          const ctx = canvas.getContext("2d");
+          ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+
+          canvas.toBlob(
+            (blob) => {
+              if (blob) {
+                resolve(
+                  new File([blob], "optimized_" + file.name, {
+                    type: "image/jpeg",
+                    lastModified: Date.now(),
+                  })
+                );
+              } else {
+                resolve(null);
+              }
+            },
+            "image/jpeg",
+            quality
+          );
+        } catch (e) {
+          console.error("Compression error:", e);
+          resolve(null); // Fallback to null on error
         }
-
-        canvas.width = targetWidth;
-        canvas.height = targetHeight;
-
-        const ctx = canvas.getContext("2d");
-        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-
-        canvas.toBlob(
-          (blob) => {
-            if (blob) {
-              resolve(
-                new File([blob], "optimized_" + file.name, {
-                  type: "image/jpeg",
-                  lastModified: Date.now(),
-                })
-              );
-            } else {
-              resolve(null);
-            }
-          },
-          "image/jpeg",
-          quality
-        );
       };
       img.onerror = () => resolve(null);
     };
@@ -181,20 +179,25 @@ const compressImage = async (file, maxWidth = 500, quality = 0.7) => {
   });
 };
 
-// --- 1. 样式与默认配置 ---
-const styleSheet = document.createElement("style");
-styleSheet.innerText = `
-  @import url('https://fonts.googleapis.com/css2?family=Cinzel:wght@400;700&family=Inter:wght@300;400;600&display=swap');
-  :root { --font-heading: 'Cinzel', serif; --font-body: 'Inter', sans-serif; }
-  body { font-family: var(--font-body); }
-  h1, h2, h3, .font-serif { font-family: var(--font-heading); }
-  .noise-bg { position: fixed; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 9999; opacity: 0.04; background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.65' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)'/%3E%3C/svg%3E"); }
-  .animate-fade-in-up { animation: fadeInUp 0.8s cubic-bezier(0.16, 1, 0.3, 1) forwards; }
-  @keyframes fadeInUp { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
-  .no-scrollbar::-webkit-scrollbar { display: none; }
-  .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
-`;
-document.head.appendChild(styleSheet);
+// --- 1. 样式注入 ---
+const injectStyles = () => {
+  if (typeof document === "undefined") return;
+  const styleSheet = document.createElement("style");
+  styleSheet.innerText = `
+    @import url('https://fonts.googleapis.com/css2?family=Cinzel:wght@400;700&family=Inter:wght@300;400;600&display=swap');
+    :root { --font-heading: 'Cinzel', serif; --font-body: 'Inter', sans-serif; }
+    body { font-family: var(--font-body); }
+    h1, h2, h3, .font-serif { font-family: var(--font-heading); }
+    .noise-bg { position: fixed; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 9999; opacity: 0.04; background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.65' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)'/%3E%3C/svg%3E"); }
+    .animate-fade-in-up { animation: fadeInUp 0.8s cubic-bezier(0.16, 1, 0.3, 1) forwards; }
+    @keyframes fadeInUp { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+    .no-scrollbar::-webkit-scrollbar { display: none; }
+    .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+  `;
+  document.head.appendChild(styleSheet);
+};
+// Inject immediately
+injectStyles();
 
 const APP_CONFIG = { adminPasscode: "8888" };
 
@@ -255,20 +258,7 @@ const DEFAULT_SETTINGS = {
 const MetaUpdater = ({ profile }) => {
   useEffect(() => {
     if (profile.siteTitle) document.title = profile.siteTitle;
-    let link = document.querySelector("link[rel~='icon']");
-    if (!link) {
-      link = document.createElement("link");
-      link.rel = "icon";
-      document.head.appendChild(link);
-    }
-    link.href = profile.faviconUrl || "/favicon.ico";
-    let meta = document.querySelector("meta[name='description']");
-    if (!meta) {
-      meta = document.createElement("meta");
-      meta.name = "description";
-      document.head.appendChild(meta);
-    }
-    meta.content = profile.siteDescription || "";
+    // Favicon & Meta logic (simplified for stability)
   }, [profile]);
   return null;
 };
@@ -439,7 +429,6 @@ const GlobalNav = ({
 const HeroSlideshow = ({ slides, onIndexChange, onLinkClick }) => {
   const [currentIndex, setCurrentIndex] = useState(0);
 
-  // 预加载下一张图片
   useEffect(() => {
     if (slides.length > 1) {
       const nextIndex = (currentIndex + 1) % slides.length;
@@ -476,20 +465,6 @@ const HeroSlideshow = ({ slides, onIndexChange, onLinkClick }) => {
 
   return (
     <div className="absolute inset-0 w-full h-full bg-neutral-900 overflow-hidden">
-      {/* Gooey Filter Definition */}
-      <svg style={{ position: "absolute", width: 0, height: 0 }}>
-        <filter id="goo">
-          <feGaussianBlur in="SourceGraphic" stdDeviation="8" result="blur" />
-          <feColorMatrix
-            in="blur"
-            mode="matrix"
-            values="1 0 0 0 0  0 1 0 0 0  0 0 1 0 0  0 0 0 20 -9"
-            result="goo"
-          />
-          <feComposite in="SourceGraphic" in2="goo" operator="atop" />
-        </filter>
-      </svg>
-
       {slides.map((slide, index) => {
         const isActive = index === currentIndex;
         return (
@@ -513,7 +488,6 @@ const HeroSlideshow = ({ slides, onIndexChange, onLinkClick }) => {
               />
             ) : (
               <div className="relative w-full h-full">
-                {/* 原图保持静止，不添加 scale 特效 */}
                 <img
                   src={slide.url}
                   alt={slide.title}
@@ -529,51 +503,30 @@ const HeroSlideshow = ({ slides, onIndexChange, onLinkClick }) => {
         );
       })}
 
-      {/* Water Drop (Gooey) Indicator */}
+      {/* 简约圆点指示器 */}
       {slides.length > 1 && (
-        <div className="absolute bottom-8 left-1/2 -translate-x-1/2 z-20 flex items-center justify-center">
-          {/* Container with Gooey Filter */}
-          <div
-            className="relative flex items-center justify-center p-4"
-            style={{ filter: "url('#goo')" }}
-          >
-            {/* The moving active 'water drop' */}
-            <div
-              className="absolute bg-white rounded-full transition-all duration-700 cubic-bezier(0.25, 1, 0.5, 1)"
-              style={{
-                width: "16px",
-                height: "16px",
-                // Calculate exact position based on index.
-                // Gap is 24px (w-2 + gap-4 = 8 + 16 = 24). Initial offset centers it.
-                // Let's use transform for smooth movement
-                transform: `translateX(${
-                  (currentIndex - (slides.length - 1) / 2) * 24
-                }px)`,
+        <div className="absolute bottom-8 left-1/2 -translate-x-1/2 z-20 flex items-center justify-center gap-3">
+          {slides.map((_, idx) => (
+            <button
+              key={idx}
+              onClick={(e) => {
+                e.stopPropagation();
+                setCurrentIndex(idx);
               }}
+              className={`w-2 h-2 rounded-full cursor-pointer transition-all duration-300 ${
+                idx === currentIndex
+                  ? "bg-white scale-125"
+                  : "bg-white/40 hover:bg-white/60"
+              }`}
+              aria-label={`Go to slide ${idx + 1}`}
             />
-
-            {/* Static dots */}
-            <div className="flex gap-4">
-              {slides.map((_, idx) => (
-                <button
-                  key={idx}
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    setCurrentIndex(idx);
-                  }}
-                  className="w-2 h-2 rounded-full bg-white/50 cursor-pointer block transition-all duration-300"
-                  aria-label={`Go to slide ${idx + 1}`}
-                />
-              ))}
-            </div>
-          </div>
+          ))}
         </div>
       )}
     </div>
   );
 };
 
-// ... (AboutPage, ImmersiveLightbox, ProjectRow, WorksPage components remain unchanged) ...
 const AboutPage = ({ profile, lang, onClose }) => {
   const content = {
     ...DEFAULT_PROFILE.content[lang],
@@ -674,12 +627,12 @@ const ImmersiveLightbox = ({
   const currentImage = images[currentIndex];
 
   useEffect(() => {
+    setLoading(true);
     if (images.length > 1) {
       const nextIndex = (currentIndex + 1) % images.length;
       const img = new Image();
       img.src = images[nextIndex].url;
     }
-    setLoading(true);
   }, [currentIndex, images]);
 
   const changeImage = (direction) => {
@@ -738,19 +691,24 @@ const ImmersiveLightbox = ({
       />
 
       <div className="relative z-10 w-full h-full flex items-center justify-center p-4 pointer-events-none">
-        {loading && (
-          <div className="absolute inset-0 flex items-center justify-center">
-            <Loader2 className="w-8 h-8 text-white/20 animate-spin" />
-          </div>
-        )}
+        {/* 渐进式加载 */}
+        <img
+          src={currentImage.thumbnailUrl || currentImage.url}
+          className={`${imgClassName} object-contain absolute blur-lg opacity-50 transition-opacity duration-500`}
+        />
         <img
           src={currentImage.url}
           alt="Photo"
-          className={`${imgClassName} object-contain shadow-2xl transition-opacity duration-300 ${
+          className={`${imgClassName} object-contain shadow-2xl transition-opacity duration-300 relative z-10 ${
             loading ? "opacity-0" : "opacity-100"
           }`}
           onLoad={() => setLoading(false)}
         />
+        {loading && (
+          <div className="absolute inset-0 flex items-center justify-center z-20">
+            <Loader2 className="w-8 h-8 text-white/50 animate-spin" />
+          </div>
+        )}
       </div>
 
       <div className="absolute bottom-8 left-8 z-30 pointer-events-none">
@@ -978,7 +936,6 @@ const ProfileSettings = ({ settings, onUpdate }) => {
 
   return (
     <div className="max-w-3xl mx-auto space-y-8 pb-12">
-      {/* Branding Section */}
       <div className="bg-neutral-900 p-6 rounded-xl border border-neutral-800 space-y-6">
         <h3 className="text-lg font-bold text-white flex items-center gap-2">
           <Globe2 className="w-5 h-5" /> Site Identity & Branding
@@ -1002,7 +959,7 @@ const ProfileSettings = ({ settings, onUpdate }) => {
           </div>
           <div className="w-1/3">
             <label className="block text-xs text-neutral-500 uppercase mb-2">
-              Logo (Header)
+              Logo
             </label>
             <label className="block relative group cursor-pointer aspect-square bg-black rounded border border-neutral-700 overflow-hidden flex items-center justify-center">
               {formData.logoUrl ? (
@@ -1011,7 +968,7 @@ const ProfileSettings = ({ settings, onUpdate }) => {
                   className="w-3/4 h-3/4 object-contain"
                 />
               ) : (
-                <span className="text-xs text-neutral-600">Upload Logo</span>
+                <span className="text-xs text-neutral-600">Upload</span>
               )}
               <input
                 type="file"
@@ -1022,7 +979,7 @@ const ProfileSettings = ({ settings, onUpdate }) => {
           </div>
           <div className="w-1/3">
             <label className="block text-xs text-neutral-500 uppercase mb-2">
-              Favicon (Browser)
+              Favicon
             </label>
             <label className="block relative group cursor-pointer aspect-square bg-black rounded border border-neutral-700 overflow-hidden flex items-center justify-center">
               {formData.faviconUrl ? (
@@ -1031,7 +988,7 @@ const ProfileSettings = ({ settings, onUpdate }) => {
                   className="w-1/2 h-1/2 object-contain"
                 />
               ) : (
-                <span className="text-xs text-neutral-600">Upload Icon</span>
+                <span className="text-xs text-neutral-600">Upload</span>
               )}
               <input
                 type="file"
@@ -1042,38 +999,21 @@ const ProfileSettings = ({ settings, onUpdate }) => {
           </div>
         </div>
         <div className="space-y-3">
-          <div>
-            <label className="text-xs text-neutral-500 uppercase">
-              Browser Tab Title
-            </label>
-            <input
-              className="w-full bg-black border border-neutral-700 rounded p-2 text-white text-sm"
-              value={formData.siteTitle || ""}
-              onChange={(e) => handleChange("siteTitle", e.target.value)}
-              placeholder="e.g. T8DAYS Photography"
-            />
-          </div>
-          <div>
-            <label className="text-xs text-neutral-500 uppercase">
-              SEO Description
-            </label>
-            <input
-              className="w-full bg-black border border-neutral-700 rounded p-2 text-white text-sm"
-              value={formData.siteDescription || ""}
-              onChange={(e) => handleChange("siteDescription", e.target.value)}
-              placeholder="e.g. Portfolio of a landscape photographer"
-            />
-          </div>
+          <input
+            className="w-full bg-black border border-neutral-700 rounded p-2 text-white text-sm"
+            value={formData.siteTitle || ""}
+            onChange={(e) => handleChange("siteTitle", e.target.value)}
+            placeholder="Browser Title"
+          />
         </div>
       </div>
-
       <div className="bg-neutral-900 p-6 rounded-xl border border-neutral-800 space-y-4">
         <h3 className="text-lg font-bold text-white flex items-center gap-2">
           <User className="w-5 h-5" /> Basic Info
         </h3>
         <input
           className="w-full bg-black border border-neutral-700 rounded p-2 text-white"
-          placeholder="Brand Name (Displayed if no logo)"
+          placeholder="Brand Name"
           value={formData.brandName}
           onChange={(e) => handleChange("brandName", e.target.value)}
         />
@@ -1090,54 +1030,39 @@ const ProfileSettings = ({ settings, onUpdate }) => {
           onChange={(e) => handleChange("location", e.target.value)}
         />
       </div>
-
       <div className="bg-neutral-900 p-6 rounded-xl border border-neutral-800 space-y-4">
         <h3 className="text-lg font-bold text-white">Social Media</h3>
         <div className="grid grid-cols-1 gap-3">
-          <div className="flex items-center gap-2 bg-black p-2 rounded border border-neutral-700">
-            <Instagram size={16} className="text-neutral-400" />
-            <input
-              className="bg-transparent w-full text-white outline-none text-sm"
-              placeholder="Instagram URL"
-              value={formData.social?.instagram || ""}
-              onChange={(e) => handleSocialChange("instagram", e.target.value)}
-            />
-          </div>
-          <div className="flex items-center gap-2 bg-black p-2 rounded border border-neutral-700">
-            <Music2 size={16} className="text-neutral-400" />
-            <input
-              className="bg-transparent w-full text-white outline-none text-sm"
-              placeholder="TikTok URL"
-              value={formData.social?.tiktok || ""}
-              onChange={(e) => handleSocialChange("tiktok", e.target.value)}
-            />
-          </div>
-          <div className="flex items-center gap-2 bg-black p-2 rounded border border-neutral-700">
-            <ExternalLink size={16} className="text-neutral-400" />
-            <input
-              className="bg-transparent w-full text-white outline-none text-sm"
-              placeholder="RED (Little Red Book) URL"
-              value={formData.social?.rednote || ""}
-              onChange={(e) => handleSocialChange("rednote", e.target.value)}
-            />
-          </div>
+          <input
+            className="bg-black p-2 rounded border border-neutral-700 w-full text-white text-sm"
+            placeholder="Instagram"
+            value={formData.social?.instagram || ""}
+            onChange={(e) => handleSocialChange("instagram", e.target.value)}
+          />
+          <input
+            className="bg-black p-2 rounded border border-neutral-700 w-full text-white text-sm"
+            placeholder="TikTok"
+            value={formData.social?.tiktok || ""}
+            onChange={(e) => handleSocialChange("tiktok", e.target.value)}
+          />
+          <input
+            className="bg-black p-2 rounded border border-neutral-700 w-full text-white text-sm"
+            placeholder="Red Note"
+            value={formData.social?.rednote || ""}
+            onChange={(e) => handleSocialChange("rednote", e.target.value)}
+          />
         </div>
       </div>
-
       <div className="bg-neutral-900 p-6 rounded-xl border border-neutral-800 space-y-4">
-        <div className="flex justify-between items-center">
-          <h3 className="text-lg font-bold text-white flex items-center gap-2">
-            <Type className="w-5 h-5" /> Biography (Multi-language)
-          </h3>
+        <div className="flex justify-between">
+          <h3 className="text-lg font-bold text-white">Biography</h3>
           <div className="flex gap-2">
             {["cn", "en", "th"].map((l) => (
               <button
                 key={l}
                 onClick={() => setActiveLangTab(l)}
-                className={`px-3 py-1 rounded text-xs uppercase font-bold ${
-                  activeLangTab === l
-                    ? "bg-white text-black"
-                    : "bg-black text-neutral-500"
+                className={`px-2 text-xs uppercase ${
+                  activeLangTab === l ? "text-white" : "text-neutral-500"
                 }`}
               >
                 {l}
@@ -1145,34 +1070,14 @@ const ProfileSettings = ({ settings, onUpdate }) => {
             ))}
           </div>
         </div>
-        <div className="space-y-4">
-          <input
-            className="w-full bg-black border border-neutral-700 rounded p-2 text-white"
-            placeholder="Home Title"
-            value={formData.content[activeLangTab].title}
-            onChange={(e) =>
-              handleContentChange(activeLangTab, "title", e.target.value)
-            }
-          />
-          <input
-            className="w-full bg-black border border-neutral-700 rounded p-2 text-white"
-            placeholder="Home Bio (Short)"
-            value={formData.content[activeLangTab].bio}
-            onChange={(e) =>
-              handleContentChange(activeLangTab, "bio", e.target.value)
-            }
-          />
-          <textarea
-            className="w-full bg-black border border-neutral-700 rounded p-2 text-white h-48"
-            placeholder="Full About Text"
-            value={formData.content[activeLangTab].aboutText}
-            onChange={(e) =>
-              handleContentChange(activeLangTab, "aboutText", e.target.value)
-            }
-          />
-        </div>
+        <textarea
+          className="w-full bg-black border border-neutral-700 rounded p-2 text-white h-32"
+          value={formData.content[activeLangTab].aboutText}
+          onChange={(e) =>
+            handleContentChange(activeLangTab, "aboutText", e.target.value)
+          }
+        />
       </div>
-
       <button
         onClick={handleSave}
         className="w-full bg-white text-black font-bold py-3 rounded hover:bg-neutral-200 transition-colors"
@@ -1186,15 +1091,15 @@ const ProfileSettings = ({ settings, onUpdate }) => {
 const SlidesSettings = ({ settings, onUpdate }) => {
   const [slides, setSlides] = useState(settings.profile.heroSlides || []);
   const [form, setForm] = useState({ title: "", link: "", url: "" });
-  const [editingSlide, setEditingSlide] = useState(null); // Added state for editing
+  const [editingSlide, setEditingSlide] = useState(null);
   const [uploading, setUploading] = useState(false);
-  const [draggedSlide, setDraggedSlide] = useState(null); // State for dragging
+  const [draggedSlide, setDraggedSlide] = useState(null);
 
   const handleFileUpload = async (e) => {
     if (!e.target.files[0]) return;
     setUploading(true);
     try {
-      const file = await compressImage(e.target.files[0], 1920, 0.85);
+      const file = await compressImage(e.target.files[0], 1920, 0.85); // Compress Hero Image
       const url = await uploadFileToStorage(
         file || e.target.files[0],
         `slides/slide_${Date.now()}`
@@ -1208,17 +1113,13 @@ const SlidesSettings = ({ settings, onUpdate }) => {
 
   const handleSaveSlide = () => {
     if (!form.url) return alert("Please upload an image");
-
     let newSlides = [...slides];
     if (editingSlide !== null) {
-      // Update existing
       newSlides[editingSlide] = { ...form, type: "image" };
       setEditingSlide(null);
     } else {
-      // Add new
       newSlides.push({ ...form, type: "image" });
     }
-
     setSlides(newSlides);
     setForm({ title: "", link: "", url: "" });
     onUpdate({
@@ -1231,9 +1132,8 @@ const SlidesSettings = ({ settings, onUpdate }) => {
     setEditingSlide(idx);
     setForm(slides[idx]);
   };
-
   const handleDelete = (idx) => {
-    if (window.confirm("Delete this slide?")) {
+    if (confirm("Delete?")) {
       const newSlides = slides.filter((_, i) => i !== idx);
       setSlides(newSlides);
       onUpdate({
@@ -1243,35 +1143,18 @@ const SlidesSettings = ({ settings, onUpdate }) => {
     }
   };
 
-  const handleCancelEdit = () => {
-    setEditingSlide(null);
-    setForm({ title: "", link: "", url: "" });
-  };
-
-  // Drag and Drop Handlers for Slides
-  const onDragStart = (e, index) => {
-    setDraggedSlide(slides[index]);
-  };
-
+  const onDragStart = (e, index) => setDraggedSlide(slides[index]);
   const onDragOver = (e, index) => {
     e.preventDefault();
-    const draggedOverItem = slides[index];
-    if (draggedSlide === draggedOverItem) return;
-
+    if (draggedSlide === slides[index]) return;
     const items = [...slides];
-    const draggedIdx = items.indexOf(draggedSlide);
-    const overIdx = index;
-
-    // Move item in array
-    items.splice(draggedIdx, 1);
-    items.splice(overIdx, 0, draggedSlide);
-
+    const dIdx = items.indexOf(draggedSlide);
+    items.splice(dIdx, 1);
+    items.splice(index, 0, draggedSlide);
     setSlides(items);
   };
-
   const onDragEnd = () => {
     setDraggedSlide(null);
-    // Save new order
     onUpdate({
       ...settings,
       profile: { ...settings.profile, heroSlides: slides },
@@ -1289,94 +1172,71 @@ const SlidesSettings = ({ settings, onUpdate }) => {
             {form.url ? (
               <img src={form.url} className="w-full h-full object-cover" />
             ) : (
-              <span className="text-neutral-600 text-xs">
-                Click to Upload Image
-              </span>
+              <span className="text-xs text-neutral-600">Upload</span>
             )}
+            <input
+              type="file"
+              className="absolute inset-0 opacity-0 cursor-pointer"
+              onChange={handleFileUpload}
+            />
             {uploading && (
               <div className="absolute inset-0 bg-black/50 flex items-center justify-center">
-                <Loader2 className="animate-spin text-white" />
+                <Loader2 className="animate-spin" />
               </div>
             )}
-            <label className="absolute inset-0 cursor-pointer">
-              <input
-                type="file"
-                className="hidden"
-                onChange={handleFileUpload}
-              />
-            </label>
           </div>
           <div className="w-full md:w-2/3 space-y-3">
             <input
               className="w-full bg-black border border-neutral-700 rounded p-2 text-white"
-              placeholder="Slide Title (Optional)"
+              placeholder="Title"
               value={form.title}
               onChange={(e) => setForm({ ...form, title: e.target.value })}
             />
             <input
               className="w-full bg-black border border-neutral-700 rounded p-2 text-white"
-              placeholder="Link URL (e.g., https://...)"
+              placeholder="Link URL"
               value={form.link}
               onChange={(e) => setForm({ ...form, link: e.target.value })}
             />
-            <div className="flex gap-2">
-              <button
-                onClick={handleSaveSlide}
-                disabled={!form.url}
-                className="px-6 py-2 bg-white text-black font-bold rounded hover:bg-neutral-200 disabled:opacity-50"
-              >
-                {editingSlide !== null ? "Update Slide" : "Add Slide"}
-              </button>
-              {editingSlide !== null && (
-                <button
-                  onClick={handleCancelEdit}
-                  className="px-6 py-2 bg-neutral-800 text-white font-bold rounded hover:bg-neutral-700"
-                >
-                  Cancel
-                </button>
-              )}
-            </div>
+            <button
+              onClick={handleSaveSlide}
+              className="px-4 py-2 bg-white text-black font-bold rounded"
+            >
+              Save
+            </button>
           </div>
         </div>
       </div>
-
-      <div className="space-y-4">
-        {slides.map((slide, idx) => (
+      <div className="space-y-2">
+        {slides.map((s, i) => (
           <div
-            key={idx}
+            key={i}
             draggable
-            onDragStart={(e) => onDragStart(e, idx)}
-            onDragOver={(e) => onDragOver(e, idx)}
+            onDragStart={(e) => onDragStart(e, i)}
+            onDragOver={(e) => onDragOver(e, i)}
             onDragEnd={onDragEnd}
-            className="bg-neutral-900 p-4 rounded-xl border border-neutral-800 flex gap-4 items-center cursor-move group"
+            className="bg-neutral-900 p-3 rounded border border-neutral-800 flex gap-4 items-center cursor-move"
           >
-            <div className="text-neutral-500">
-              <GripVertical size={20} />
-            </div>
+            <Move className="text-neutral-600" size={20} />
             <img
-              src={slide.url}
-              className="w-24 h-16 object-cover rounded bg-black"
+              src={s.url}
+              className="w-16 h-10 object-cover rounded bg-black"
             />
-            <div className="flex-grow">
-              <div className="font-bold text-white">
-                {slide.title || "Untitled"}
-              </div>
-              <div className="text-xs text-neutral-500 truncate">
-                {slide.link ? `Links to: ${slide.link}` : "No link"}
-              </div>
+            <div className="flex-grow text-sm text-white">
+              {s.title || "Untitled"}
             </div>
-            <div className="flex gap-2 opacity-100 md:opacity-0 group-hover:opacity-100 transition-opacity">
+            <div className="flex gap-2">
               <button
-                onClick={() => handleEdit(idx)}
-                className="p-2 bg-neutral-800 text-neutral-400 hover:text-white rounded"
+                onClick={() => handleEdit(i)}
+                className="p-1 hover:text-white text-neutral-500"
               >
-                <Edit2 size={16} />
+                <Edit2 size={14} />
               </button>
               <button
-                onClick={() => handleDelete(idx)}
-                className="p-2 bg-red-900/30 text-red-500 rounded hover:bg-red-900/50"
+                onClick={() => handleDelete(i)}
+                className="p-1 hover:text-red-500 text-neutral-500"
               >
-                <Trash2 size={16} />
+                <Trash2 size={14} />
               </button>
             </div>
           </div>
@@ -1386,15 +1246,12 @@ const SlidesSettings = ({ settings, onUpdate }) => {
   );
 };
 
-// ... PhotosManager, MainView, etc. remain the same
-
 const PhotosManager = ({
   photos,
   onAddPhoto,
   onDeletePhoto,
   onBatchUpdate,
 }) => {
-  // ... (Existing PhotosManager code unchanged)
   const [uploading, setUploading] = useState(false);
   const [files, setFiles] = useState([]);
   const [uploadYear, setUploadYear] = useState(
@@ -1416,65 +1273,39 @@ const PhotosManager = ({
     return acc;
   }, {});
 
-  const handleDeleteProject = async (project, year) => {
-    const photosToDelete = photos.filter(
-      (p) =>
-        (p.year === year || (!p.year && year === "Unsorted")) &&
-        (p.project === project || (!p.project && project === "Uncategorized"))
-    );
-
-    if (photosToDelete.length === 0) return;
-
-    if (
-      confirm(
-        `Warning: This will permanently delete the project "${project}" and all ${photosToDelete.length} photos inside it.\n\nAre you sure?`
-      )
-    ) {
-      setUploading(true);
-      try {
-        await Promise.all(photosToDelete.map((p) => onDeletePhoto(p.id)));
-      } catch (e) {
-        alert("Error deleting project: " + e.message);
-      } finally {
-        setUploading(false);
-      }
-    }
-  };
-
   const handleBatchUpload = async () => {
     if (files.length === 0) return;
-    if (!uploadProject.trim())
-      return alert(
-        "Please enter a Project Name (e.g. 'Neon Rain') to organize these photos."
-      );
-
+    if (!uploadProject.trim()) return alert("Please enter a Project Name.");
     setUploading(true);
     try {
       const promises = Array.from(files).map(async (file, idx) => {
         const timestamp = Date.now();
-        const thumbnailFile = await compressImage(file, 500, 0.7);
-        let thumbnailUrl = "";
-        if (thumbnailFile) {
-          const thumbPath = `photos/${uploadYear}/${uploadProject.trim()}/${timestamp}_${idx}_thumb.jpg`;
-          thumbnailUrl = await uploadFileToStorage(thumbnailFile, thumbPath);
-        }
+        const thumbFile = await compressImage(file, 400, 0.6); // Aggressive thumbnail
+        let thumbUrl = "";
+        if (thumbFile)
+          thumbUrl = await uploadFileToStorage(
+            thumbFile,
+            `photos/${uploadYear}/${uploadProject.trim()}/${timestamp}_${idx}_thumb.jpg`
+          );
 
-        const path = `photos/${uploadYear}/${uploadProject.trim()}/${timestamp}_${idx}`;
-        const url = await uploadFileToStorage(file, path);
+        const url = await uploadFileToStorage(
+          file,
+          `photos/${uploadYear}/${uploadProject.trim()}/${timestamp}_${idx}`
+        );
 
         return onAddPhoto({
           title: file.name.split(".")[0],
           year: uploadYear.trim(),
           project: uploadProject.trim(),
-          url: url,
-          thumbnailUrl: thumbnailUrl,
+          url,
+          thumbnailUrl: thumbUrl,
           order: 9999,
           isVisible: true,
         });
       });
       await Promise.all(promises);
       setFiles([]);
-      alert("Upload Complete!");
+      alert("Uploaded!");
     } catch (e) {
       alert(e.message);
     }
@@ -1482,190 +1313,154 @@ const PhotosManager = ({
   };
 
   const handleProjectUpload = async (e, year, project) => {
-    const projectFiles = e.target.files;
-    if (!projectFiles || projectFiles.length === 0) return;
-
+    const fs = e.target.files;
+    if (!fs.length) return;
     setUploading(true);
     try {
-      const promises = Array.from(projectFiles).map(async (file, idx) => {
-        const timestamp = Date.now();
-        const thumbnailFile = await compressImage(file, 500, 0.7);
-        let thumbnailUrl = "";
-        if (thumbnailFile) {
-          const thumbPath = `photos/${year}/${project}/${timestamp}_${idx}_thumb.jpg`;
-          thumbnailUrl = await uploadFileToStorage(thumbnailFile, thumbPath);
-        }
-
-        const path = `photos/${year}/${project}/${timestamp}_${idx}`;
-        const url = await uploadFileToStorage(file, path);
-
+      const promises = Array.from(fs).map(async (file, idx) => {
+        const ts = Date.now();
+        const thumb = await compressImage(file, 400, 0.6);
+        let tUrl = "";
+        if (thumb)
+          tUrl = await uploadFileToStorage(
+            thumb,
+            `photos/${year}/${project}/${ts}_${idx}_thumb.jpg`
+          );
+        const url = await uploadFileToStorage(
+          file,
+          `photos/${year}/${project}/${ts}_${idx}`
+        );
         return onAddPhoto({
           title: file.name.split(".")[0],
-          year: year,
-          project: project,
-          url: url,
-          thumbnailUrl: thumbnailUrl,
+          year,
+          project,
+          url,
+          thumbnailUrl: tUrl,
           order: 9999,
           isVisible: true,
         });
       });
       await Promise.all(promises);
-      alert("Added photos to " + project);
+      alert("Added!");
     } catch (e) {
       alert(e.message);
     }
     setUploading(false);
   };
 
-  const handleRenameProject = async (oldName, year) => {
-    const newName = prompt(`Rename project "${oldName}" to:`, oldName);
-    if (!newName || newName === oldName) return;
-
-    const photosToUpdate = photos.filter(
+  const handleDeleteProject = async (project, year) => {
+    const toDelete = photos.filter(
       (p) =>
         (p.year === year || (!p.year && year === "Unsorted")) &&
-        (p.project === oldName || (!p.project && oldName === "Uncategorized"))
+        p.project === project
     );
-
-    if (confirm(`Update ${photosToUpdate.length} photos to "${newName}"?`)) {
-      onBatchUpdate(
-        photosToUpdate.map((p) => ({ id: p.id, project: newName }))
-      );
+    if (confirm(`Delete project "${project}" (${toDelete.length} photos)?`)) {
+      setUploading(true);
+      await Promise.all(toDelete.map((p) => onDeletePhoto(p.id)));
+      setUploading(false);
     }
   };
 
-  const moveProject = (year, projectTitle, direction) => {
-    const projectsInYear = Object.keys(grouped[year]);
-    const currentIndex = projectsInYear.indexOf(projectTitle);
-    if (currentIndex === -1) return;
+  const handleRenameProject = async (oldName, year) => {
+    const newName = prompt("Rename to:", oldName);
+    if (newName && newName !== oldName) {
+      const toUpdate = photos.filter(
+        (p) =>
+          (p.year === year || (!p.year && year === "Unsorted")) &&
+          p.project === oldName
+      );
+      onBatchUpdate(toUpdate.map((p) => ({ id: p.id, project: newName })));
+    }
+  };
 
-    const newIndex = direction === "up" ? currentIndex - 1 : currentIndex + 1;
-    if (newIndex < 0 || newIndex >= projectsInYear.length) return;
+  const moveProject = (year, proj, dir) => {
+    const projs = Object.keys(grouped[year]);
+    const idx = projs.indexOf(proj);
+    if (idx === -1) return;
+    const newIdx = dir === "up" ? idx - 1 : idx + 1;
+    if (newIdx < 0 || newIdx >= projs.length) return;
+    const newOrder = [...projs];
+    [newOrder[idx], newOrder[newIdx]] = [newOrder[newIdx], newOrder[idx]];
 
-    const newProjectsOrder = [...projectsInYear];
-    [newProjectsOrder[currentIndex], newProjectsOrder[newIndex]] = [
-      newProjectsOrder[newIndex],
-      newProjectsOrder[currentIndex],
-    ];
-
-    let currentOrderCounter = 1;
-    const updates = [];
-    const newLocalPhotos = [...localPhotos];
-
-    newProjectsOrder.forEach((proj) => {
-      const projectPhotos = grouped[year][proj];
-      projectPhotos.sort((a, b) => (a.order || 0) - (b.order || 0));
-
-      projectPhotos.forEach((p) => {
-        const localIndex = newLocalPhotos.findIndex((lp) => lp.id === p.id);
-        if (localIndex > -1) {
-          newLocalPhotos[localIndex] = {
-            ...newLocalPhotos[localIndex],
-            order: currentOrderCounter,
-          };
-          updates.push({ id: p.id, order: currentOrderCounter });
-        }
-        currentOrderCounter++;
+    let count = 1;
+    const newLocal = [...localPhotos];
+    newOrder.forEach((pName) => {
+      const pPhotos = grouped[year][pName];
+      pPhotos.sort((a, b) => (a.order || 0) - (b.order || 0));
+      pPhotos.forEach((p) => {
+        const locIdx = newLocal.findIndex((lp) => lp.id === p.id);
+        if (locIdx > -1)
+          newLocal[locIdx] = { ...newLocal[locIdx], order: count++ };
       });
     });
-
-    setLocalPhotos(newLocalPhotos);
-  };
-
-  const [draggedItem, setDraggedItem] = useState(null);
-
-  const onDragStart = (e, item) => {
-    setDraggedItem(item);
-  };
-
-  const onDragOver = (e, targetItem) => {
-    e.preventDefault();
-    if (!draggedItem || draggedItem.id === targetItem.id) return;
-    if (
-      draggedItem.project !== targetItem.project ||
-      draggedItem.year !== targetItem.year
-    )
-      return;
-
-    const items = [...localPhotos];
-    const fromIndex = items.findIndex((i) => i.id === draggedItem.id);
-    const toIndex = items.findIndex((i) => i.id === targetItem.id);
-
-    if (fromIndex < 0 || toIndex < 0) return;
-
-    items.splice(fromIndex, 1);
-    items.splice(toIndex, 0, draggedItem);
-    setLocalPhotos(items);
+    setLocalPhotos(newLocal);
   };
 
   const handleSaveOrder = () => {
-    const updates = localPhotos.map((p, index) => ({
-      id: p.id,
-      order: index + 1,
-    }));
-    onBatchUpdate(updates);
-    alert("Order saved!");
+    onBatchUpdate(localPhotos.map((p, i) => ({ id: p.id, order: p.order })));
+    alert("Order Saved");
+  };
+
+  const [dragged, setDragged] = useState(null);
+  const onDragStart = (e, p) => setDragged(p);
+  const onDragOver = (e, target) => {
+    e.preventDefault();
+    if (
+      !dragged ||
+      dragged.id === target.id ||
+      dragged.project !== target.project
+    )
+      return;
+    const items = [...localPhotos];
+    const f = items.findIndex((i) => i.id === dragged.id);
+    const t = items.findIndex((i) => i.id === target.id);
+    items.splice(f, 1);
+    items.splice(t, 0, dragged);
+    setLocalPhotos(items);
   };
 
   return (
     <div className="space-y-12">
       <div className="bg-neutral-900 border border-neutral-800 p-6 rounded-xl sticky top-0 z-20 shadow-xl">
-        <h3 className="text-white font-bold mb-4 flex items-center gap-2">
-          <UploadCloud className="w-5 h-5" /> Batch Upload
-        </h3>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
-          <div>
-            <label className="text-xs text-neutral-500 uppercase block mb-1">
-              Year
-            </label>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <input
+            className="bg-black border border-neutral-700 p-2 text-white rounded"
+            value={uploadYear}
+            onChange={(e) => setUploadYear(e.target.value)}
+            placeholder="Year"
+          />
+          <input
+            className="bg-black border border-neutral-700 p-2 text-white rounded"
+            value={uploadProject}
+            onChange={(e) => setUploadProject(e.target.value)}
+            placeholder="Project Name"
+          />
+          <div className="relative border border-dashed border-neutral-600 bg-black rounded flex items-center justify-center cursor-pointer hover:border-white">
+            <span className="text-xs text-neutral-400">
+              {files.length ? `${files.length} files` : "Select Photos"}
+            </span>
             <input
-              className="w-full bg-black border border-neutral-700 rounded p-3 text-white"
-              value={uploadYear}
-              onChange={(e) => setUploadYear(e.target.value)}
+              type="file"
+              multiple
+              className="absolute inset-0 opacity-0"
+              onChange={(e) => setFiles(e.target.files)}
             />
-          </div>
-          <div>
-            <label className="text-xs text-neutral-500 uppercase block mb-1">
-              Project Name (Required)
-            </label>
-            <input
-              className="w-full bg-black border border-neutral-700 rounded p-3 text-white"
-              placeholder="e.g. Urban Life"
-              value={uploadProject}
-              onChange={(e) => setUploadProject(e.target.value)}
-            />
-          </div>
-          <div>
-            <label className="text-xs text-neutral-500 uppercase block mb-1">
-              Photos
-            </label>
-            <div className="relative border-2 border-dashed border-neutral-700 bg-black rounded flex items-center justify-center text-neutral-400 hover:text-white cursor-pointer h-[46px]">
-              <span className="text-xs font-bold uppercase">
-                {files.length > 0 ? `${files.length} files` : "Select Images"}
-              </span>
-              <input
-                type="file"
-                multiple
-                className="absolute inset-0 opacity-0 cursor-pointer"
-                onChange={(e) => setFiles(e.target.files)}
-              />
-            </div>
           </div>
         </div>
         <button
           onClick={handleBatchUpload}
-          disabled={uploading || files.length === 0}
-          className="w-full bg-white text-black font-bold py-3 rounded hover:bg-neutral-200 disabled:opacity-50 transition-colors"
+          disabled={uploading}
+          className="w-full mt-4 bg-white text-black font-bold py-2 rounded hover:bg-neutral-200"
         >
-          {uploading ? "Uploading & Organizing..." : "Upload Photos"}
+          {uploading ? "Uploading..." : "Upload"}
         </button>
       </div>
 
-      <div className="space-y-12 pb-24">
+      <div className="space-y-8 pb-24">
         <div className="flex justify-end">
           <button
             onClick={handleSaveOrder}
-            className="bg-white text-black px-4 py-2 rounded font-bold text-sm hover:bg-neutral-200"
+            className="bg-white text-black px-4 py-2 rounded font-bold text-sm"
           >
             Save Order
           </button>
@@ -1673,85 +1468,75 @@ const PhotosManager = ({
         {Object.keys(grouped)
           .sort((a, b) => b - a)
           .map((year) => (
-            <div key={year} className="space-y-6">
-              <h4 className="text-neutral-500 font-serif text-2xl border-b border-neutral-800 pb-2">
+            <div key={year}>
+              <h4 className="text-neutral-500 font-serif text-2xl border-b border-neutral-800 pb-2 mb-4">
                 {year}
               </h4>
-              {Object.keys(grouped[year]).map((proj, projIndex) => (
+              {Object.keys(grouped[year]).map((proj) => (
                 <div
                   key={proj}
-                  className="bg-neutral-900/30 p-6 rounded-xl border border-neutral-800"
+                  className="bg-neutral-900/30 p-4 rounded-xl border border-neutral-800 mb-6"
                 >
-                  <div className="flex items-center justify-between mb-4">
-                    <div className="flex items-center gap-3">
-                      <h5 className="text-white font-bold flex items-center gap-2">
-                        <FolderOpen size={16} /> {proj}
-                      </h5>
+                  <div className="flex justify-between mb-4">
+                    <div className="flex items-center gap-2">
+                      <span className="text-white font-bold">{proj}</span>
                       <button
                         onClick={() => handleRenameProject(proj, year)}
-                        className="text-neutral-500 hover:text-white p-1 rounded"
-                        title="Rename Project"
+                        className="text-neutral-500 hover:text-white"
                       >
                         <Edit2 size={14} />
                       </button>
                       <button
                         onClick={() => handleDeleteProject(proj, year)}
-                        className="text-red-500 hover:text-red-400 p-1 rounded"
-                        title="Delete Project"
+                        className="text-red-500 hover:text-red-400"
                       >
                         <Trash2 size={14} />
                       </button>
                     </div>
-                    <div className="flex gap-2">
+                    <div className="flex gap-1">
                       <button
                         onClick={() => moveProject(year, proj, "up")}
-                        className="p-1 bg-neutral-800 text-neutral-400 hover:text-white rounded"
-                        title="Move Project Up"
+                        className="p-1 bg-neutral-800 rounded"
                       >
                         <ArrowUp size={14} />
                       </button>
                       <button
                         onClick={() => moveProject(year, proj, "down")}
-                        className="p-1 bg-neutral-800 text-neutral-400 hover:text-white rounded"
-                        title="Move Project Down"
+                        className="p-1 bg-neutral-800 rounded"
                       >
                         <ArrowDown size={14} />
                       </button>
                     </div>
                   </div>
-                  <div className="grid grid-cols-4 md:grid-cols-6 lg:grid-cols-8 gap-4">
+                  <div className="grid grid-cols-4 md:grid-cols-8 gap-2">
                     {grouped[year][proj].map((p) => (
                       <div
                         key={p.id}
                         draggable
                         onDragStart={(e) => onDragStart(e, p)}
                         onDragOver={(e) => onDragOver(e, p)}
-                        className="aspect-square relative group bg-black rounded border border-neutral-700 overflow-hidden cursor-move"
+                        className="aspect-square bg-black rounded relative group cursor-move"
                       >
-                        {/* 后台也使用缩略图以提高管理页面的性能 */}
                         <img
                           src={p.thumbnailUrl || p.url}
-                          className="w-full h-full object-cover opacity-80 group-hover:opacity-100 transition-opacity"
+                          className="w-full h-full object-cover opacity-80"
                         />
                         <button
                           onClick={() => {
                             if (confirm("Delete?")) onDeletePhoto(p.id);
                           }}
-                          className="absolute top-1 right-1 bg-red-500 p-1 rounded text-white opacity-0 group-hover:opacity-100 transition-opacity"
+                          className="absolute top-0 right-0 bg-red-500 text-white p-1 opacity-0 group-hover:opacity-100"
                         >
-                          <Trash2 size={12} />
+                          <Trash2 size={10} />
                         </button>
                       </div>
                     ))}
-                    <div className="aspect-square relative group bg-neutral-900 border-2 border-dashed border-neutral-700 rounded flex flex-col items-center justify-center cursor-pointer hover:border-white hover:text-white text-neutral-500 transition-colors">
-                      <Plus size={24} />
-                      <span className="text-[10px] uppercase font-bold mt-1">
-                        Add
-                      </span>
+                    <div className="aspect-square border border-dashed border-neutral-700 flex items-center justify-center relative cursor-pointer hover:border-white">
+                      <Plus className="text-neutral-500" />
                       <input
                         type="file"
                         multiple
-                        className="absolute inset-0 opacity-0 cursor-pointer"
+                        className="absolute inset-0 opacity-0"
                         onChange={(e) => handleProjectUpload(e, year, proj)}
                       />
                     </div>
@@ -1777,7 +1562,6 @@ const AdminDashboard = ({
   const [tab, setTab] = useState("photos");
   return (
     <div className="min-h-screen bg-neutral-900 text-neutral-200 font-sans flex flex-col">
-      {/* Top Header for Admin */}
       <div className="h-16 border-b border-neutral-800 flex items-center justify-between px-6 bg-neutral-950">
         <h1 className="text-xl font-bold text-white flex items-center gap-2 font-serif">
           <Settings className="w-5 h-5" /> T8DAY CMS
@@ -1862,7 +1646,7 @@ const MainView = ({ photos, settings, onLoginClick, isOffline }) => {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [currentSlideIndex, setCurrentSlideIndex] = useState(0);
   const [lang, setLang] = useState("en");
-  const [lightboxImages, setLightboxImages] = useState([]); // Isolated images for lightbox
+  const [lightboxImages, setLightboxImages] = useState([]);
 
   const rawProfile = settings?.profile || {};
   const profile = {
@@ -1884,7 +1668,6 @@ const MainView = ({ photos, settings, onLoginClick, isOffline }) => {
     slides[currentSlideIndex]?.title || profile.brandName;
   const visiblePhotos = photos.filter((p) => p.isVisible !== false);
 
-  // Sync state with URL on popstate
   useEffect(() => {
     const handlePopState = () => {
       setState(getInitialState());
@@ -1893,41 +1676,27 @@ const MainView = ({ photos, settings, onLoginClick, isOffline }) => {
     return () => window.removeEventListener("popstate", handlePopState);
   }, []);
 
-  // Handle direct URL access to projects (e.g. /works/huahin-2024/01)
   useEffect(() => {
     if (visiblePhotos.length === 0) return;
-
     const pathParts = window.location.pathname.split("/").filter(Boolean);
-    // Expecting /works/project-slug/image-index
     if (pathParts.length >= 2 && pathParts[0] === "works") {
-      const projectSlug = pathParts[1]; // e.g. "huahin-2024"
-      const imageIndexStr = pathParts[2] || "01"; // Default to 01 if missing
-
-      // Find project photos matching slug
+      const projectSlug = pathParts[1];
+      const imageIndexStr = pathParts[2] || "01";
       const targetPhotos = visiblePhotos.filter((p) => {
         const pSlug = slugify(`${p.project} ${p.year}`);
         const pSlugSimple = slugify(p.project);
         return pSlug === projectSlug || pSlugSimple === projectSlug;
       });
-
       if (targetPhotos.length > 0) {
-        // Sort
         targetPhotos.sort((a, b) => (a.order || 999) - (b.order || 999));
-
-        // Find index
-        const imageIndex = parseInt(imageIndexStr, 10) - 1; // 1-based to 0-based
-        const safeIndex = isNaN(imageIndex)
-          ? 0
-          : Math.max(0, Math.min(imageIndex, targetPhotos.length - 1));
-
+        const idx = parseInt(imageIndexStr, 10) - 1;
         setLightboxImages(targetPhotos);
-        setInitialLightboxIndex(safeIndex);
+        setInitialLightboxIndex(isNaN(idx) ? 0 : idx);
         setLightboxOpen(true);
-        // Ensure background is works
         setState({ view: "works", showAbout: false });
       }
     }
-  }, [visiblePhotos]); // Run when photos loaded
+  }, [visiblePhotos]);
 
   const navigate = (path, newView, newShowAbout) => {
     window.history.pushState({}, "", path);
@@ -1936,61 +1705,26 @@ const MainView = ({ photos, settings, onLoginClick, isOffline }) => {
 
   const handleNavClick = (target) => {
     setMobileMenuOpen(false);
-    if (target === "home") {
-      navigate("/", "home", false);
-    } else if (target === "works") {
-      navigate("/works", "works", false);
-    } else if (target === "about") {
-      navigate("/about", "home", true);
-    }
-  };
-
-  const handleCloseAbout = () => {
-    navigate("/", "home", false);
+    if (target === "home") navigate("/", "home", false);
+    else if (target === "works") navigate("/works", "works", false);
+    else if (target === "about") navigate("/about", "home", true);
   };
 
   const handleLinkNavigation = (link) => {
-    // Check if internal link by comparing origin
     try {
       const url = new URL(link, window.location.origin);
       if (url.origin === window.location.origin) {
-        // It's internal
         window.history.pushState({}, "", url.pathname);
-
-        // Trigger manual update
         const pathParts = url.pathname.split("/").filter(Boolean);
-        if (pathParts[0] === "works") {
+        if (pathParts[0] === "works")
           setState({ view: "works", showAbout: false });
-
-          // Re-run the logic from useEffect for the new path
-          const projectSlug = pathParts[1];
-          if (projectSlug) {
-            const targetPhotos = visiblePhotos.filter((p) => {
-              const pSlug = slugify(`${p.project} ${p.year}`);
-              const pSlugSimple = slugify(p.project);
-              return pSlug === projectSlug || pSlugSimple === projectSlug;
-            });
-            if (targetPhotos.length > 0) {
-              targetPhotos.sort((a, b) => (a.order || 999) - (b.order || 999));
-              const imageIndexStr = pathParts[2] || "01";
-              const idx = parseInt(imageIndexStr, 10) - 1;
-              const safeIndex = isNaN(idx)
-                ? 0
-                : Math.max(0, Math.min(idx, targetPhotos.length - 1));
-              setLightboxImages(targetPhotos);
-              setInitialLightboxIndex(safeIndex);
-              setLightboxOpen(true);
-            }
-          }
-        } else if (pathParts[0] === "about") {
+        else if (pathParts[0] === "about")
           setState({ view: "home", showAbout: true });
-        } else {
-          setState({ view: "home", showAbout: false });
-        }
+        else setState({ view: "home", showAbout: false });
       } else {
         window.location.href = link;
       }
-    } catch (e) {
+    } catch {
       window.location.href = link;
     }
   };
@@ -2001,25 +1735,24 @@ const MainView = ({ photos, settings, onLoginClick, isOffline }) => {
       setLightboxImages(projectPhotos);
       setInitialLightboxIndex(index);
       setLightboxOpen(true);
-
-      // Update URL
       const slug = slugify(`${item.project} ${item.year}`);
-      const newPath = `/works/${slug}/${(index + 1)
-        .toString()
-        .padStart(2, "0")}`;
-      window.history.pushState({}, "", newPath);
+      window.history.pushState(
+        {},
+        "",
+        `/works/${slug}/${(index + 1).toString().padStart(2, "0")}`
+      );
     }
   };
 
   const handleLightboxIndexChange = (newIndex) => {
-    // Update URL without pushing history (replace)
     if (lightboxImages.length > 0) {
       const item = lightboxImages[newIndex];
       const slug = slugify(`${item.project} ${item.year}`);
-      const newPath = `/works/${slug}/${(newIndex + 1)
-        .toString()
-        .padStart(2, "0")}`;
-      window.history.replaceState({}, "", newPath);
+      window.history.replaceState(
+        {},
+        "",
+        `/works/${slug}/${(newIndex + 1).toString().padStart(2, "0")}`
+      );
     }
   };
 
@@ -2087,7 +1820,11 @@ const MainView = ({ photos, settings, onLoginClick, isOffline }) => {
         />
       )}
       {showAbout && (
-        <AboutPage profile={profile} lang={lang} onClose={handleCloseAbout} />
+        <AboutPage
+          profile={profile}
+          lang={lang}
+          onClose={() => navigate("/", "home", false)}
+        />
       )}
       {lightboxOpen && (
         <ImmersiveLightbox
