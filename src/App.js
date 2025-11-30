@@ -24,11 +24,11 @@ import {
   Play,
   Pause,
   Edit2,
-  Globe,
+  Globe, // 使用标准 Globe
   Music2,
   ArrowLeft,
   ChevronLeft,
-  Move,
+  Move, // 替换 GripVertical 为 Move
   Eye,
   EyeOff,
   ChevronDown,
@@ -141,16 +141,18 @@ const compressImage = async (file, maxWidth = 1920, quality = 0.85) => {
           let width = img.width;
           let height = img.height;
 
-          if (width > height) {
-            if (width > maxWidth) {
+          if (width > maxWidth || height > maxWidth) {
+            if (width > height) {
               height = Math.round(height * (maxWidth / width));
               width = maxWidth;
-            }
-          } else {
-            if (height > maxWidth) {
+            } else {
               width = Math.round(width * (maxWidth / height));
               height = maxWidth;
             }
+          } else {
+            // 如果图片很小，直接返回原图，避免不必要的处理
+            resolve(file);
+            return;
           }
 
           canvas.width = width;
@@ -624,7 +626,6 @@ const AboutPage = ({ profile, lang, onClose }) => {
   );
 };
 
-// --- ImmersiveLightbox: 极速加载优化版 ---
 const ImmersiveLightbox = ({
   initialIndex,
   images,
@@ -632,22 +633,13 @@ const ImmersiveLightbox = ({
   onIndexChange,
 }) => {
   const [currentIndex, setCurrentIndex] = useState(initialIndex);
-  // 使用 ref 来直接检测图片加载状态，避免 React 状态更新延迟
-  const highResRef = useRef(null);
   const [isHighResLoaded, setIsHighResLoaded] = useState(false);
-
   const currentImage = images[currentIndex];
 
-  // 每次切换图片时重置状态
   useEffect(() => {
     setIsHighResLoaded(false);
 
-    // 检查是否命中浏览器缓存 (秒开关键)
-    if (highResRef.current && highResRef.current.complete) {
-      setIsHighResLoaded(true);
-    }
-
-    // 预加载下一张
+    // Preload next
     if (images.length > 1) {
       const nextIndex = (currentIndex + 1) % images.length;
       const img = new Image();
@@ -680,8 +672,6 @@ const ImmersiveLightbox = ({
 
   const isHighRes = currentImage.width > 1920 && currentImage.height > 1080;
   const imgClassName = isHighRes ? "h-[75vh] w-auto" : "max-h-[75vh] w-auto";
-
-  // 优先使用缩略图作为占位符，如果没有则使用原图（虽然会慢，但至少有东西）
   const placeholderSrc = currentImage.thumbnailUrl || currentImage.url;
 
   return (
@@ -705,26 +695,20 @@ const ImmersiveLightbox = ({
       />
 
       <div className="relative z-10 w-full h-full flex items-center justify-center p-4 pointer-events-none">
-        {/* 1. 占位图层 (永远存在，作为底色) */}
         <img
           src={placeholderSrc}
           className={`${imgClassName} object-contain absolute filter blur-xl scale-105 opacity-50 transition-opacity duration-500`}
           alt="placeholder"
         />
-
-        {/* 2. 高清图层 (加载完成后淡入) */}
         <img
-          ref={highResRef}
           src={currentImage.url}
           alt="Photo"
-          className={`${imgClassName} object-contain shadow-2xl relative z-10 transition-opacity duration-500 ease-out ${
+          className={`${imgClassName} object-contain shadow-2xl relative z-10 transition-opacity duration-700 ease-out ${
             isHighResLoaded ? "opacity-100" : "opacity-0"
           }`}
           onLoad={() => setIsHighResLoaded(true)}
-          onError={() => setIsHighResLoaded(true)} // 即使出错也显示(破图图标)，避免卡死
+          onError={() => setIsHighResLoaded(true)}
         />
-
-        {/* 3. Loading (彻底移除，避免干扰，因为有占位图了) */}
       </div>
 
       <div className="absolute bottom-8 left-8 z-30 pointer-events-none">
@@ -836,7 +820,6 @@ const ProjectRow = ({ projectTitle, photos, onImageClick }) => {
             className="flex-shrink-0 aspect-square bg-neutral-900 overflow-hidden cursor-pointer w-[32vw] md:w-[9vw]"
             onClick={() => onImageClick(photo, photos)}
           >
-            {/* 列表页：优先使用 thumbnailUrl 加速加载 */}
             <img
               src={photo.thumbnailUrl || photo.url}
               alt="Work"
@@ -1703,12 +1686,10 @@ const MainView = ({ photos, settings, onLoginClick, isOffline }) => {
     if (visiblePhotos.length === 0) return;
 
     const pathParts = window.location.pathname.split("/").filter(Boolean);
-    // Expecting /works/project-slug/image-index
     if (pathParts.length >= 2 && pathParts[0] === "works") {
-      const projectSlug = pathParts[1]; // e.g. "huahin-2024"
-      const imageIndexStr = pathParts[2] || "01"; // Default to 01 if missing
+      const projectSlug = pathParts[1];
+      const imageIndexStr = pathParts[2] || "01";
 
-      // Find project photos matching slug
       const targetPhotos = visiblePhotos.filter((p) => {
         const pSlug = slugify(`${p.project} ${p.year}`);
         const pSlugSimple = slugify(p.project);
@@ -1732,7 +1713,7 @@ const MainView = ({ photos, settings, onLoginClick, isOffline }) => {
         setState({ view: "works", showAbout: false });
       }
     }
-  }, [visiblePhotos]); // Run when photos loaded
+  }, [visiblePhotos]);
 
   const navigate = (path, newView, newShowAbout) => {
     window.history.pushState({}, "", path);
