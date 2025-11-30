@@ -24,7 +24,7 @@ import {
   Play,
   Pause,
   Edit2,
-  Globe, // Replaced Globe2 with Globe
+  Globe,
   Music2,
   ArrowLeft,
   ChevronLeft,
@@ -128,7 +128,6 @@ const slugify = (text) => {
 };
 
 // 核心优化：全自动图片压缩
-// maxWidth 默认为 1920 (2K)，保证上传的图片永远适合网页展示
 const compressImage = async (file, maxWidth = 1920, quality = 0.85) => {
   return new Promise((resolve) => {
     const reader = new FileReader();
@@ -142,8 +141,6 @@ const compressImage = async (file, maxWidth = 1920, quality = 0.85) => {
           let width = img.width;
           let height = img.height;
 
-          // 如果图片大于最大宽度（例如 1920），则按比例缩小
-          // 如果是竖图，也限制高度不超过 1920
           if (width > height) {
             if (width > maxWidth) {
               height = Math.round(height * (maxWidth / width));
@@ -165,7 +162,6 @@ const compressImage = async (file, maxWidth = 1920, quality = 0.85) => {
           canvas.toBlob(
             (blob) => {
               if (blob) {
-                // 返回压缩后的文件
                 resolve(
                   new File([blob], file.name, {
                     type: "image/jpeg",
@@ -173,7 +169,7 @@ const compressImage = async (file, maxWidth = 1920, quality = 0.85) => {
                   })
                 );
               } else {
-                resolve(file); // 失败则返回原文件
+                resolve(file);
               }
             },
             "image/jpeg",
@@ -193,7 +189,6 @@ const compressImage = async (file, maxWidth = 1920, quality = 0.85) => {
 // --- 1. 样式注入 ---
 const injectStyles = () => {
   if (typeof document === "undefined") return;
-  // Remove existing if any to prevent dupe
   const existing = document.getElementById("t8days-styles");
   if (existing) return;
 
@@ -629,6 +624,7 @@ const AboutPage = ({ profile, lang, onClose }) => {
   );
 };
 
+// --- ImmersiveLightbox: 极速加载优化版 ---
 const ImmersiveLightbox = ({
   initialIndex,
   images,
@@ -636,20 +632,27 @@ const ImmersiveLightbox = ({
   onIndexChange,
 }) => {
   const [currentIndex, setCurrentIndex] = useState(initialIndex);
-  const [showSplash, setShowSplash] = useState(true);
-  const [loading, setLoading] = useState(true);
+  // 使用 ref 来直接检测图片加载状态，避免 React 状态更新延迟
+  const highResRef = useRef(null);
+  const [isHighResLoaded, setIsHighResLoaded] = useState(false);
+
   const currentImage = images[currentIndex];
 
+  // 每次切换图片时重置状态
   useEffect(() => {
-    setLoading(true);
+    setIsHighResLoaded(false);
+
+    // 检查是否命中浏览器缓存 (秒开关键)
+    if (highResRef.current && highResRef.current.complete) {
+      setIsHighResLoaded(true);
+    }
+
+    // 预加载下一张
     if (images.length > 1) {
       const nextIndex = (currentIndex + 1) % images.length;
       const img = new Image();
       img.src = images[nextIndex].url;
     }
-    // 5s 超时强制显示，防止无限转圈
-    const timer = setTimeout(() => setLoading(false), 5000);
-    return () => clearTimeout(timer);
   }, [currentIndex, images]);
 
   const changeImage = (direction) => {
@@ -673,26 +676,18 @@ const ImmersiveLightbox = ({
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [currentIndex]);
 
-  useEffect(() => {
-    const t = setTimeout(() => setShowSplash(false), 1500);
-    return () => clearTimeout(t);
-  }, []);
-
   if (!currentImage) return null;
+
   const isHighRes = currentImage.width > 1920 && currentImage.height > 1080;
   const imgClassName = isHighRes ? "h-[75vh] w-auto" : "max-h-[75vh] w-auto";
 
-  // 渐进式加载策略：优先显示缩略图，再显示大图
+  // 优先使用缩略图作为占位符，如果没有则使用原图（虽然会慢，但至少有东西）
   const placeholderSrc = currentImage.thumbnailUrl || currentImage.url;
 
   return (
     <div className="fixed inset-0 z-[100] bg-black flex items-center justify-center animate-fade-in">
-      <div
-        className={`absolute inset-0 z-[110] bg-black flex items-center justify-center pointer-events-none transition-opacity duration-1000 ${
-          showSplash ? "opacity-100" : "opacity-0"
-        }`}
-      >
-        <h2 className="text-2xl font-serif text-white tracking-[0.5em] uppercase text-center px-4">
+      <div className="absolute top-6 left-0 right-0 text-center pointer-events-none z-10">
+        <h2 className="text-xl font-serif text-white/90 tracking-[0.3em] uppercase drop-shadow-lg">
           {currentImage.project}
         </h2>
       </div>
@@ -710,29 +705,26 @@ const ImmersiveLightbox = ({
       />
 
       <div className="relative z-10 w-full h-full flex items-center justify-center p-4 pointer-events-none">
-        {/* Layer 1: Blurred Placeholder (Instant) */}
+        {/* 1. 占位图层 (永远存在，作为底色) */}
         <img
           src={placeholderSrc}
-          className={`${imgClassName} object-contain absolute filter blur-xl scale-105 opacity-50 transition-opacity duration-700`}
+          className={`${imgClassName} object-contain absolute filter blur-xl scale-105 opacity-50 transition-opacity duration-500`}
+          alt="placeholder"
         />
 
-        {/* Layer 2: High Res Image (Fades in) */}
+        {/* 2. 高清图层 (加载完成后淡入) */}
         <img
+          ref={highResRef}
           src={currentImage.url}
           alt="Photo"
-          className={`${imgClassName} object-contain shadow-2xl relative z-10 transition-opacity duration-300 ease-out ${
-            loading ? "opacity-0" : "opacity-100"
+          className={`${imgClassName} object-contain shadow-2xl relative z-10 transition-opacity duration-500 ease-out ${
+            isHighResLoaded ? "opacity-100" : "opacity-0"
           }`}
-          onLoad={() => setLoading(false)}
-          onError={() => setLoading(false)}
+          onLoad={() => setIsHighResLoaded(true)}
+          onError={() => setIsHighResLoaded(true)} // 即使出错也显示(破图图标)，避免卡死
         />
 
-        {/* Loading Indicator (Only if stuck and no placeholder) */}
-        {loading && !placeholderSrc && (
-          <div className="absolute inset-0 flex items-center justify-center z-30">
-            <Loader2 className="w-8 h-8 text-white/20 animate-spin" />
-          </div>
-        )}
+        {/* 3. Loading (彻底移除，避免干扰，因为有占位图了) */}
       </div>
 
       <div className="absolute bottom-8 left-8 z-30 pointer-events-none">
@@ -1124,7 +1116,7 @@ const SlidesSettings = ({ settings, onUpdate }) => {
     if (!e.target.files[0]) return;
     setUploading(true);
     try {
-      const file = await compressImage(e.target.files[0], 1920, 0.85);
+      const file = await compressImage(e.target.files[0], 1920, 0.85); // Compress Hero Image
       const url = await uploadFileToStorage(
         file || e.target.files[0],
         `slides/slide_${Date.now()}`
@@ -1305,7 +1297,7 @@ const PhotosManager = ({
     try {
       const promises = Array.from(files).map(async (file, idx) => {
         const timestamp = Date.now();
-        const thumbFile = await compressImage(file, 400, 0.6);
+        const thumbFile = await compressImage(file, 400, 0.6); // Aggressive thumbnail
         let thumbUrl = "";
         if (thumbFile)
           thumbUrl = await uploadFileToStorage(
@@ -1711,10 +1703,12 @@ const MainView = ({ photos, settings, onLoginClick, isOffline }) => {
     if (visiblePhotos.length === 0) return;
 
     const pathParts = window.location.pathname.split("/").filter(Boolean);
+    // Expecting /works/project-slug/image-index
     if (pathParts.length >= 2 && pathParts[0] === "works") {
-      const projectSlug = pathParts[1];
-      const imageIndexStr = pathParts[2] || "01";
+      const projectSlug = pathParts[1]; // e.g. "huahin-2024"
+      const imageIndexStr = pathParts[2] || "01"; // Default to 01 if missing
 
+      // Find project photos matching slug
       const targetPhotos = visiblePhotos.filter((p) => {
         const pSlug = slugify(`${p.project} ${p.year}`);
         const pSlugSimple = slugify(p.project);
@@ -1722,9 +1716,11 @@ const MainView = ({ photos, settings, onLoginClick, isOffline }) => {
       });
 
       if (targetPhotos.length > 0) {
+        // Sort
         targetPhotos.sort((a, b) => (a.order || 999) - (b.order || 999));
 
-        const imageIndex = parseInt(imageIndexStr, 10) - 1;
+        // Find index
+        const imageIndex = parseInt(imageIndexStr, 10) - 1; // 1-based to 0-based
         const safeIndex = isNaN(imageIndex)
           ? 0
           : Math.max(0, Math.min(imageIndex, targetPhotos.length - 1));
@@ -1732,10 +1728,11 @@ const MainView = ({ photos, settings, onLoginClick, isOffline }) => {
         setLightboxImages(targetPhotos);
         setInitialLightboxIndex(safeIndex);
         setLightboxOpen(true);
+        // Ensure background is works
         setState({ view: "works", showAbout: false });
       }
     }
-  }, [visiblePhotos]);
+  }, [visiblePhotos]); // Run when photos loaded
 
   const navigate = (path, newView, newShowAbout) => {
     window.history.pushState({}, "", path);
@@ -1758,13 +1755,19 @@ const MainView = ({ photos, settings, onLoginClick, isOffline }) => {
   };
 
   const handleLinkNavigation = (link) => {
+    // Check if internal link by comparing origin
     try {
       const url = new URL(link, window.location.origin);
       if (url.origin === window.location.origin) {
+        // It's internal
         window.history.pushState({}, "", url.pathname);
+
+        // Trigger manual update
         const pathParts = url.pathname.split("/").filter(Boolean);
         if (pathParts[0] === "works") {
           setState({ view: "works", showAbout: false });
+
+          // Re-run the logic from useEffect for the new path
           const projectSlug = pathParts[1];
           if (projectSlug) {
             const targetPhotos = visiblePhotos.filter((p) => {
@@ -1803,16 +1806,18 @@ const MainView = ({ photos, settings, onLoginClick, isOffline }) => {
       setLightboxImages(projectPhotos);
       setInitialLightboxIndex(index);
       setLightboxOpen(true);
+
+      // Update URL
       const slug = slugify(`${item.project} ${item.year}`);
-      window.history.pushState(
-        {},
-        "",
-        `/works/${slug}/${(index + 1).toString().padStart(2, "0")}`
-      );
+      const newPath = `/works/${slug}/${(index + 1)
+        .toString()
+        .padStart(2, "0")}`;
+      window.history.pushState({}, "", newPath);
     }
   };
 
   const handleLightboxIndexChange = (newIndex) => {
+    // Update URL without pushing history (replace)
     if (lightboxImages.length > 0) {
       const item = lightboxImages[newIndex];
       const slug = slugify(`${item.project} ${item.year}`);
