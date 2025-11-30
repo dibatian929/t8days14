@@ -24,11 +24,11 @@ import {
   Play,
   Pause,
   Edit2,
-  Globe, // Use standard Globe
+  Globe, // Replaced Globe2 with Globe
   Music2,
   ArrowLeft,
   ChevronLeft,
-  Move, // Use Move instead of GripVertical
+  Move,
   Eye,
   EyeOff,
   ChevronDown,
@@ -127,7 +127,9 @@ const slugify = (text) => {
     .replace(/-+$/, "");
 };
 
-const compressImage = async (file, maxWidth = 400, quality = 0.6) => {
+// 核心优化：全自动图片压缩
+// maxWidth 默认为 1920 (2K)，保证上传的图片永远适合网页展示
+const compressImage = async (file, maxWidth = 1920, quality = 0.85) => {
   return new Promise((resolve) => {
     const reader = new FileReader();
     reader.readAsDataURL(file);
@@ -137,51 +139,66 @@ const compressImage = async (file, maxWidth = 400, quality = 0.6) => {
       img.onload = () => {
         try {
           const canvas = document.createElement("canvas");
-          let targetWidth = img.width;
-          let targetHeight = img.height;
+          let width = img.width;
+          let height = img.height;
 
-          if (img.width > maxWidth) {
-            const scaleSize = maxWidth / img.width;
-            targetWidth = maxWidth;
-            targetHeight = img.height * scaleSize;
+          // 如果图片大于最大宽度（例如 1920），则按比例缩小
+          // 如果是竖图，也限制高度不超过 1920
+          if (width > height) {
+            if (width > maxWidth) {
+              height = Math.round(height * (maxWidth / width));
+              width = maxWidth;
+            }
+          } else {
+            if (height > maxWidth) {
+              width = Math.round(width * (maxWidth / height));
+              height = maxWidth;
+            }
           }
 
-          canvas.width = targetWidth;
-          canvas.height = targetHeight;
+          canvas.width = width;
+          canvas.height = height;
 
           const ctx = canvas.getContext("2d");
-          ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+          ctx.drawImage(img, 0, 0, width, height);
 
           canvas.toBlob(
             (blob) => {
               if (blob) {
+                // 返回压缩后的文件
                 resolve(
-                  new File([blob], "optimized_" + file.name, {
+                  new File([blob], file.name, {
                     type: "image/jpeg",
                     lastModified: Date.now(),
                   })
                 );
               } else {
-                resolve(null);
+                resolve(file); // 失败则返回原文件
               }
             },
             "image/jpeg",
             quality
           );
         } catch (e) {
-          resolve(null);
+          console.error("Compression failed", e);
+          resolve(file);
         }
       };
-      img.onerror = () => resolve(null);
+      img.onerror = () => resolve(file);
     };
-    reader.onerror = () => resolve(null);
+    reader.onerror = () => resolve(file);
   });
 };
 
 // --- 1. 样式注入 ---
 const injectStyles = () => {
   if (typeof document === "undefined") return;
+  // Remove existing if any to prevent dupe
+  const existing = document.getElementById("t8days-styles");
+  if (existing) return;
+
   const styleSheet = document.createElement("style");
+  styleSheet.id = "t8days-styles";
   styleSheet.innerText = `
     @import url('https://fonts.googleapis.com/css2?family=Cinzel:wght@400;700&family=Inter:wght@300;400;600&display=swap');
     :root { --font-heading: 'Cinzel', serif; --font-body: 'Inter', sans-serif; }
@@ -255,8 +272,7 @@ const DEFAULT_SETTINGS = {
 
 const MetaUpdater = ({ profile }) => {
   useEffect(() => {
-    if (profile.siteTitle) document.title = profile.siteTitle;
-    // Simple meta update
+    if (profile?.siteTitle) document.title = profile.siteTitle;
   }, [profile]);
   return null;
 };
@@ -631,8 +647,7 @@ const ImmersiveLightbox = ({
       const img = new Image();
       img.src = images[nextIndex].url;
     }
-
-    // Safety timeout: if image takes too long, stop spinning
+    // 5s 超时强制显示，防止无限转圈
     const timer = setTimeout(() => setLoading(false), 5000);
     return () => clearTimeout(timer);
   }, [currentIndex, images]);
@@ -667,9 +682,11 @@ const ImmersiveLightbox = ({
   const isHighRes = currentImage.width > 1920 && currentImage.height > 1080;
   const imgClassName = isHighRes ? "h-[75vh] w-auto" : "max-h-[75vh] w-auto";
 
+  // 渐进式加载策略：优先显示缩略图，再显示大图
+  const placeholderSrc = currentImage.thumbnailUrl || currentImage.url;
+
   return (
     <div className="fixed inset-0 z-[100] bg-black flex items-center justify-center animate-fade-in">
-      {/* Splash - Only show project title */}
       <div
         className={`absolute inset-0 z-[110] bg-black flex items-center justify-center pointer-events-none transition-opacity duration-1000 ${
           showSplash ? "opacity-100" : "opacity-0"
@@ -693,23 +710,27 @@ const ImmersiveLightbox = ({
       />
 
       <div className="relative z-10 w-full h-full flex items-center justify-center p-4 pointer-events-none">
-        {/* 渐进式加载：先显示模糊缩略图，再显示高清图 */}
+        {/* Layer 1: Blurred Placeholder (Instant) */}
         <img
-          src={currentImage.thumbnailUrl || currentImage.url}
-          className={`${imgClassName} object-contain absolute blur-lg opacity-50 transition-opacity duration-500`}
+          src={placeholderSrc}
+          className={`${imgClassName} object-contain absolute filter blur-xl scale-105 opacity-50 transition-opacity duration-700`}
         />
+
+        {/* Layer 2: High Res Image (Fades in) */}
         <img
           src={currentImage.url}
           alt="Photo"
-          className={`${imgClassName} object-contain shadow-2xl transition-opacity duration-300 relative z-10 ${
+          className={`${imgClassName} object-contain shadow-2xl relative z-10 transition-opacity duration-300 ease-out ${
             loading ? "opacity-0" : "opacity-100"
           }`}
           onLoad={() => setLoading(false)}
-          onError={() => setLoading(false)} // Safety
+          onError={() => setLoading(false)}
         />
-        {loading && (
-          <div className="absolute inset-0 flex items-center justify-center z-20">
-            <Loader2 className="w-8 h-8 text-white/50 animate-spin" />
+
+        {/* Loading Indicator (Only if stuck and no placeholder) */}
+        {loading && !placeholderSrc && (
+          <div className="absolute inset-0 flex items-center justify-center z-30">
+            <Loader2 className="w-8 h-8 text-white/20 animate-spin" />
           </div>
         )}
       </div>
@@ -823,6 +844,7 @@ const ProjectRow = ({ projectTitle, photos, onImageClick }) => {
             className="flex-shrink-0 aspect-square bg-neutral-900 overflow-hidden cursor-pointer w-[32vw] md:w-[9vw]"
             onClick={() => onImageClick(photo, photos)}
           >
+            {/* 列表页：优先使用 thumbnailUrl 加速加载 */}
             <img
               src={photo.thumbnailUrl || photo.url}
               alt="Work"
@@ -941,7 +963,7 @@ const ProfileSettings = ({ settings, onUpdate }) => {
     <div className="max-w-3xl mx-auto space-y-8 pb-12">
       <div className="bg-neutral-900 p-6 rounded-xl border border-neutral-800 space-y-6">
         <h3 className="text-lg font-bold text-white flex items-center gap-2">
-          <Globe2 className="w-5 h-5" /> Site Identity & Branding
+          <Globe className="w-5 h-5" /> Site Identity & Branding
         </h3>
         <div className="flex gap-6">
           <div className="w-1/3">
@@ -1102,7 +1124,7 @@ const SlidesSettings = ({ settings, onUpdate }) => {
     if (!e.target.files[0]) return;
     setUploading(true);
     try {
-      const file = await compressImage(e.target.files[0], 1920, 0.85); // Compress Hero Image
+      const file = await compressImage(e.target.files[0], 1920, 0.85);
       const url = await uploadFileToStorage(
         file || e.target.files[0],
         `slides/slide_${Date.now()}`
@@ -1283,7 +1305,7 @@ const PhotosManager = ({
     try {
       const promises = Array.from(files).map(async (file, idx) => {
         const timestamp = Date.now();
-        const thumbFile = await compressImage(file, 400, 0.6); // Aggressive thumbnail
+        const thumbFile = await compressImage(file, 400, 0.6);
         let thumbUrl = "";
         if (thumbFile)
           thumbUrl = await uploadFileToStorage(
@@ -1291,8 +1313,10 @@ const PhotosManager = ({
             `photos/${uploadYear}/${uploadProject.trim()}/${timestamp}_${idx}_thumb.jpg`
           );
 
+        // 自动压缩原图到 2K
+        const optimizedFile = await compressImage(file, 1920, 0.85);
         const url = await uploadFileToStorage(
-          file,
+          optimizedFile || file,
           `photos/${uploadYear}/${uploadProject.trim()}/${timestamp}_${idx}`
         );
 
@@ -1329,8 +1353,10 @@ const PhotosManager = ({
             thumb,
             `photos/${year}/${project}/${ts}_${idx}_thumb.jpg`
           );
+
+        const optimizedFile = await compressImage(file, 1920, 0.85);
         const url = await uploadFileToStorage(
-          file,
+          optimizedFile || file,
           `photos/${year}/${project}/${ts}_${idx}`
         );
         return onAddPhoto({
@@ -1685,12 +1711,10 @@ const MainView = ({ photos, settings, onLoginClick, isOffline }) => {
     if (visiblePhotos.length === 0) return;
 
     const pathParts = window.location.pathname.split("/").filter(Boolean);
-    // Expecting /works/project-slug/image-index
     if (pathParts.length >= 2 && pathParts[0] === "works") {
-      const projectSlug = pathParts[1]; // e.g. "huahin-2024"
-      const imageIndexStr = pathParts[2] || "01"; // Default to 01 if missing
+      const projectSlug = pathParts[1];
+      const imageIndexStr = pathParts[2] || "01";
 
-      // Find project photos matching slug
       const targetPhotos = visiblePhotos.filter((p) => {
         const pSlug = slugify(`${p.project} ${p.year}`);
         const pSlugSimple = slugify(p.project);
@@ -1698,11 +1722,9 @@ const MainView = ({ photos, settings, onLoginClick, isOffline }) => {
       });
 
       if (targetPhotos.length > 0) {
-        // Sort
         targetPhotos.sort((a, b) => (a.order || 999) - (b.order || 999));
 
-        // Find index
-        const imageIndex = parseInt(imageIndexStr, 10) - 1; // 1-based to 0-based
+        const imageIndex = parseInt(imageIndexStr, 10) - 1;
         const safeIndex = isNaN(imageIndex)
           ? 0
           : Math.max(0, Math.min(imageIndex, targetPhotos.length - 1));
@@ -1710,11 +1732,10 @@ const MainView = ({ photos, settings, onLoginClick, isOffline }) => {
         setLightboxImages(targetPhotos);
         setInitialLightboxIndex(safeIndex);
         setLightboxOpen(true);
-        // Ensure background is works
         setState({ view: "works", showAbout: false });
       }
     }
-  }, [visiblePhotos]); // Run when photos loaded
+  }, [visiblePhotos]);
 
   const navigate = (path, newView, newShowAbout) => {
     window.history.pushState({}, "", path);
@@ -1737,19 +1758,13 @@ const MainView = ({ photos, settings, onLoginClick, isOffline }) => {
   };
 
   const handleLinkNavigation = (link) => {
-    // Check if internal link by comparing origin
     try {
       const url = new URL(link, window.location.origin);
       if (url.origin === window.location.origin) {
-        // It's internal
         window.history.pushState({}, "", url.pathname);
-
-        // Trigger manual update
         const pathParts = url.pathname.split("/").filter(Boolean);
         if (pathParts[0] === "works") {
           setState({ view: "works", showAbout: false });
-
-          // Re-run the logic from useEffect for the new path
           const projectSlug = pathParts[1];
           if (projectSlug) {
             const targetPhotos = visiblePhotos.filter((p) => {
@@ -1788,18 +1803,16 @@ const MainView = ({ photos, settings, onLoginClick, isOffline }) => {
       setLightboxImages(projectPhotos);
       setInitialLightboxIndex(index);
       setLightboxOpen(true);
-
-      // Update URL
       const slug = slugify(`${item.project} ${item.year}`);
-      const newPath = `/works/${slug}/${(index + 1)
-        .toString()
-        .padStart(2, "0")}`;
-      window.history.pushState({}, "", newPath);
+      window.history.pushState(
+        {},
+        "",
+        `/works/${slug}/${(index + 1).toString().padStart(2, "0")}`
+      );
     }
   };
 
   const handleLightboxIndexChange = (newIndex) => {
-    // Update URL without pushing history (replace)
     if (lightboxImages.length > 0) {
       const item = lightboxImages[newIndex];
       const slug = slugify(`${item.project} ${item.year}`);
@@ -1874,7 +1887,11 @@ const MainView = ({ photos, settings, onLoginClick, isOffline }) => {
         />
       )}
       {showAbout && (
-        <AboutPage profile={profile} lang={lang} onClose={handleCloseAbout} />
+        <AboutPage
+          profile={profile}
+          lang={lang}
+          onClose={() => navigate("/", "home", false)}
+        />
       )}
       {lightboxOpen && (
         <ImmersiveLightbox
