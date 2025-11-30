@@ -24,11 +24,11 @@ import {
   Play,
   Pause,
   Edit2,
-  Globe,
+  Globe, // Use standard Globe
   Music2,
   ArrowLeft,
   ChevronLeft,
-  Move,
+  Move, // Use Move instead of GripVertical
   Eye,
   EyeOff,
   ChevronDown,
@@ -42,7 +42,6 @@ import {
   Youtube,
   ArrowUp,
   ArrowDown,
-  Globe2,
 } from "lucide-react";
 import { initializeApp } from "firebase/app";
 import {
@@ -94,6 +93,7 @@ try {
   db = getFirestore(app);
   storage = getStorage(app);
   isFirebaseInitialized = true;
+  console.log("Firebase initialized successfully");
 } catch (e) {
   console.error("Firebase Init Error:", e);
 }
@@ -169,8 +169,7 @@ const compressImage = async (file, maxWidth = 400, quality = 0.6) => {
             quality
           );
         } catch (e) {
-          console.error("Compression error:", e);
-          resolve(null); // Fallback to null on error
+          resolve(null);
         }
       };
       img.onerror = () => resolve(null);
@@ -196,7 +195,6 @@ const injectStyles = () => {
   `;
   document.head.appendChild(styleSheet);
 };
-// Inject immediately
 injectStyles();
 
 const APP_CONFIG = { adminPasscode: "8888" };
@@ -258,7 +256,7 @@ const DEFAULT_SETTINGS = {
 const MetaUpdater = ({ profile }) => {
   useEffect(() => {
     if (profile.siteTitle) document.title = profile.siteTitle;
-    // Favicon & Meta logic (simplified for stability)
+    // Simple meta update
   }, [profile]);
   return null;
 };
@@ -633,6 +631,10 @@ const ImmersiveLightbox = ({
       const img = new Image();
       img.src = images[nextIndex].url;
     }
+
+    // Safety timeout: if image takes too long, stop spinning
+    const timer = setTimeout(() => setLoading(false), 5000);
+    return () => clearTimeout(timer);
   }, [currentIndex, images]);
 
   const changeImage = (direction) => {
@@ -691,7 +693,7 @@ const ImmersiveLightbox = ({
       />
 
       <div className="relative z-10 w-full h-full flex items-center justify-center p-4 pointer-events-none">
-        {/* 渐进式加载 */}
+        {/* 渐进式加载：先显示模糊缩略图，再显示高清图 */}
         <img
           src={currentImage.thumbnailUrl || currentImage.url}
           className={`${imgClassName} object-contain absolute blur-lg opacity-50 transition-opacity duration-500`}
@@ -703,6 +705,7 @@ const ImmersiveLightbox = ({
             loading ? "opacity-0" : "opacity-100"
           }`}
           onLoad={() => setLoading(false)}
+          onError={() => setLoading(false)} // Safety
         />
         {loading && (
           <div className="absolute inset-0 flex items-center justify-center z-20">
@@ -1668,6 +1671,7 @@ const MainView = ({ photos, settings, onLoginClick, isOffline }) => {
     slides[currentSlideIndex]?.title || profile.brandName;
   const visiblePhotos = photos.filter((p) => p.isVisible !== false);
 
+  // Sync state with URL on popstate
   useEffect(() => {
     const handlePopState = () => {
       setState(getInitialState());
@@ -1676,27 +1680,41 @@ const MainView = ({ photos, settings, onLoginClick, isOffline }) => {
     return () => window.removeEventListener("popstate", handlePopState);
   }, []);
 
+  // Handle direct URL access to projects (e.g. /works/huahin-2024/01)
   useEffect(() => {
     if (visiblePhotos.length === 0) return;
+
     const pathParts = window.location.pathname.split("/").filter(Boolean);
+    // Expecting /works/project-slug/image-index
     if (pathParts.length >= 2 && pathParts[0] === "works") {
-      const projectSlug = pathParts[1];
-      const imageIndexStr = pathParts[2] || "01";
+      const projectSlug = pathParts[1]; // e.g. "huahin-2024"
+      const imageIndexStr = pathParts[2] || "01"; // Default to 01 if missing
+
+      // Find project photos matching slug
       const targetPhotos = visiblePhotos.filter((p) => {
         const pSlug = slugify(`${p.project} ${p.year}`);
         const pSlugSimple = slugify(p.project);
         return pSlug === projectSlug || pSlugSimple === projectSlug;
       });
+
       if (targetPhotos.length > 0) {
+        // Sort
         targetPhotos.sort((a, b) => (a.order || 999) - (b.order || 999));
-        const idx = parseInt(imageIndexStr, 10) - 1;
+
+        // Find index
+        const imageIndex = parseInt(imageIndexStr, 10) - 1; // 1-based to 0-based
+        const safeIndex = isNaN(imageIndex)
+          ? 0
+          : Math.max(0, Math.min(imageIndex, targetPhotos.length - 1));
+
         setLightboxImages(targetPhotos);
-        setInitialLightboxIndex(isNaN(idx) ? 0 : idx);
+        setInitialLightboxIndex(safeIndex);
         setLightboxOpen(true);
+        // Ensure background is works
         setState({ view: "works", showAbout: false });
       }
     }
-  }, [visiblePhotos]);
+  }, [visiblePhotos]); // Run when photos loaded
 
   const navigate = (path, newView, newShowAbout) => {
     window.history.pushState({}, "", path);
@@ -1705,26 +1723,61 @@ const MainView = ({ photos, settings, onLoginClick, isOffline }) => {
 
   const handleNavClick = (target) => {
     setMobileMenuOpen(false);
-    if (target === "home") navigate("/", "home", false);
-    else if (target === "works") navigate("/works", "works", false);
-    else if (target === "about") navigate("/about", "home", true);
+    if (target === "home") {
+      navigate("/", "home", false);
+    } else if (target === "works") {
+      navigate("/works", "works", false);
+    } else if (target === "about") {
+      navigate("/about", "home", true);
+    }
+  };
+
+  const handleCloseAbout = () => {
+    navigate("/", "home", false);
   };
 
   const handleLinkNavigation = (link) => {
+    // Check if internal link by comparing origin
     try {
       const url = new URL(link, window.location.origin);
       if (url.origin === window.location.origin) {
+        // It's internal
         window.history.pushState({}, "", url.pathname);
+
+        // Trigger manual update
         const pathParts = url.pathname.split("/").filter(Boolean);
-        if (pathParts[0] === "works")
+        if (pathParts[0] === "works") {
           setState({ view: "works", showAbout: false });
-        else if (pathParts[0] === "about")
+
+          // Re-run the logic from useEffect for the new path
+          const projectSlug = pathParts[1];
+          if (projectSlug) {
+            const targetPhotos = visiblePhotos.filter((p) => {
+              const pSlug = slugify(`${p.project} ${p.year}`);
+              const pSlugSimple = slugify(p.project);
+              return pSlug === projectSlug || pSlugSimple === projectSlug;
+            });
+            if (targetPhotos.length > 0) {
+              targetPhotos.sort((a, b) => (a.order || 999) - (b.order || 999));
+              const imageIndexStr = pathParts[2] || "01";
+              const idx = parseInt(imageIndexStr, 10) - 1;
+              const safeIndex = isNaN(idx)
+                ? 0
+                : Math.max(0, Math.min(idx, targetPhotos.length - 1));
+              setLightboxImages(targetPhotos);
+              setInitialLightboxIndex(safeIndex);
+              setLightboxOpen(true);
+            }
+          }
+        } else if (pathParts[0] === "about") {
           setState({ view: "home", showAbout: true });
-        else setState({ view: "home", showAbout: false });
+        } else {
+          setState({ view: "home", showAbout: false });
+        }
       } else {
         window.location.href = link;
       }
-    } catch {
+    } catch (e) {
       window.location.href = link;
     }
   };
@@ -1735,24 +1788,25 @@ const MainView = ({ photos, settings, onLoginClick, isOffline }) => {
       setLightboxImages(projectPhotos);
       setInitialLightboxIndex(index);
       setLightboxOpen(true);
+
+      // Update URL
       const slug = slugify(`${item.project} ${item.year}`);
-      window.history.pushState(
-        {},
-        "",
-        `/works/${slug}/${(index + 1).toString().padStart(2, "0")}`
-      );
+      const newPath = `/works/${slug}/${(index + 1)
+        .toString()
+        .padStart(2, "0")}`;
+      window.history.pushState({}, "", newPath);
     }
   };
 
   const handleLightboxIndexChange = (newIndex) => {
+    // Update URL without pushing history (replace)
     if (lightboxImages.length > 0) {
       const item = lightboxImages[newIndex];
       const slug = slugify(`${item.project} ${item.year}`);
-      window.history.replaceState(
-        {},
-        "",
-        `/works/${slug}/${(newIndex + 1).toString().padStart(2, "0")}`
-      );
+      const newPath = `/works/${slug}/${(newIndex + 1)
+        .toString()
+        .padStart(2, "0")}`;
+      window.history.replaceState({}, "", newPath);
     }
   };
 
@@ -1820,11 +1874,7 @@ const MainView = ({ photos, settings, onLoginClick, isOffline }) => {
         />
       )}
       {showAbout && (
-        <AboutPage
-          profile={profile}
-          lang={lang}
-          onClose={() => navigate("/", "home", false)}
-        />
+        <AboutPage profile={profile} lang={lang} onClose={handleCloseAbout} />
       )}
       {lightboxOpen && (
         <ImmersiveLightbox
@@ -1837,8 +1887,6 @@ const MainView = ({ photos, settings, onLoginClick, isOffline }) => {
     </div>
   );
 };
-
-// --- Main App Logic ---
 
 class ErrorBoundaryWrapper extends Component {
   constructor(props) {
