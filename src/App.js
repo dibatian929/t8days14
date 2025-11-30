@@ -28,7 +28,6 @@ import {
   Music2,
   ArrowLeft,
   ChevronLeft,
-  Move,
   Eye,
   EyeOff,
   ChevronDown,
@@ -43,7 +42,6 @@ import {
   ArrowUp,
   ArrowDown,
   Globe2,
-  GripVertical,
 } from "lucide-react";
 import { initializeApp } from "firebase/app";
 import {
@@ -178,13 +176,12 @@ const compressImage = async (file, maxWidth = 400, quality = 0.6) => {
             quality
           );
         } catch (e) {
-          console.error("Compression failed", e);
-          resolve(file);
+          resolve(null);
         }
       };
-      img.onerror = () => resolve(file);
+      img.onerror = () => resolve(null);
     };
-    reader.onerror = () => resolve(file);
+    reader.onerror = () => resolve(null);
   });
 };
 
@@ -206,6 +203,10 @@ const injectStyles = () => {
     @keyframes fadeInUp { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
     .no-scrollbar::-webkit-scrollbar { display: none; }
     .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+    
+    /* Custom Cursors */
+    .cursor-prev { cursor: url('data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIzMiIgaGVpZ2h0PSIzMiIgdmlld0JveD0iMCAwIDI0IDI0IiBmaWxsPSJub25lIiBzdHJva2U9IndoaXRlIiBzdHJva2Utd2lkdGg9IjIiIHN0cm9rZS1saW5lY2FwPSJyb3VuZCIgc3Ryb2tlLWxpbmVqb2luPSJyb3VuZCI+PHBhdGggZD0iTTE1IDE4bC02LTYgNi02Ii8+PC9zdmc+'), w-resize; }
+    .cursor-next { cursor: url('data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIzMiIgaGVpZ2h0PSIzMiIgdmlld0JveD0iMCAwIDI0IDI0IiBmaWxsPSJub25lIiBzdHJva2U9IndoaXRlIiBzdHJva2Utd2lkdGg9IjIiIHN0cm9rZS1saW5lY2FwPSJyb3VuZCIgc3Ryb2tlLWxpbmVqb2luPSJyb3VuZCI+PHBhdGggZD0iTTkgMThsNi02LTYtNiIvPjwvc3ZnPg=='), e-resize; }
   `;
   document.head.appendChild(styleSheet);
 };
@@ -626,7 +627,6 @@ const AboutPage = ({ profile, lang, onClose }) => {
   );
 };
 
-// ImmersiveLightbox: 强制显示修复版
 const ImmersiveLightbox = ({
   initialIndex,
   images,
@@ -638,28 +638,30 @@ const ImmersiveLightbox = ({
   const highResRef = useRef(null);
   const currentImage = images[currentIndex];
 
-  // 强制检查缓存和重置状态
+  // 强制检查缓存和重置状态 - 修复白屏/加载问题的核心
   useEffect(() => {
     setIsHighResLoaded(false);
 
-    // 秒开检查：如果图片已经在缓存中，立刻标记为加载完成
+    let forceShowTimer;
+    // 秒开检查
     if (highResRef.current && highResRef.current.complete) {
       setIsHighResLoaded(true);
     } else {
-      // 保险丝：0.1秒后强制显示图片（即使 onLoad 还没触发，避免一直透明）
-      // 这解决了 onLoad 偶发失效导致图片不显示的问题
-      const forceShowTimer = setTimeout(() => {
+      // 保险丝: 0.1秒后强制显示
+      forceShowTimer = setTimeout(() => {
         setIsHighResLoaded(true);
       }, 100);
-      return () => clearTimeout(forceShowTimer);
     }
 
-    // 预加载下一张
     if (images.length > 1) {
       const nextIndex = (currentIndex + 1) % images.length;
       const img = new Image();
       img.src = images[nextIndex].url;
     }
+
+    return () => {
+      if (forceShowTimer) clearTimeout(forceShowTimer);
+    };
   }, [currentIndex, images]);
 
   const changeImage = (direction) => {
@@ -691,7 +693,11 @@ const ImmersiveLightbox = ({
 
   return (
     <div className="fixed inset-0 z-[100] bg-black flex items-center justify-center animate-fade-in">
-      {/* 移除顶部标题 */}
+      <div className="absolute top-6 left-0 right-0 text-center pointer-events-none z-10">
+        <h2 className="text-xl font-serif text-white/90 tracking-[0.3em] uppercase drop-shadow-lg">
+          {currentImage.project}
+        </h2>
+      </div>
 
       <button
         onClick={onClose}
@@ -701,7 +707,15 @@ const ImmersiveLightbox = ({
       </button>
 
       <div
-        className="absolute inset-0 z-20"
+        className="absolute inset-y-0 left-0 w-1/3 z-20 cursor-prev"
+        onClick={() => changeImage("prev")}
+      />
+      <div
+        className="absolute inset-y-0 right-0 w-1/3 z-20 cursor-next"
+        onClick={() => changeImage("next")}
+      />
+      <div
+        className="absolute inset-0 z-10"
         onClick={() => changeImage("next")}
       />
 
@@ -722,9 +736,8 @@ const ImmersiveLightbox = ({
           className={`${imgClassName} object-contain shadow-2xl relative z-10 transition-opacity duration-700 ease-out`}
           style={{ opacity: isHighResLoaded ? 1 : 0 }}
           onLoad={() => setIsHighResLoaded(true)}
-          onError={() => setIsHighResLoaded(true)} // 错误兜底：出错了也显示（显示裂图总比白屏好）
+          onError={() => setIsHighResLoaded(true)}
         />
-        {/* 彻底移除了 Loading 组件 */}
       </div>
 
       <div className="absolute bottom-8 left-8 z-30 pointer-events-none">
@@ -862,9 +875,17 @@ const WorksPage = ({ photos, profile, ui, onImageClick }) => {
     acc[year][project].push(photo);
     return acc;
   }, {});
-  const sortedYears = Object.keys(groupedByYearAndProject).sort(
-    (a, b) => b - a
-  );
+
+  // 修复年份排序逻辑，处理非数字年份
+  const sortedYears = Object.keys(groupedByYearAndProject).sort((a, b) => {
+    const numA = parseInt(a);
+    const numB = parseInt(b);
+    if (isNaN(numA) && isNaN(numB)) return a.localeCompare(b);
+    if (isNaN(numA)) return 1;
+    if (isNaN(numB)) return -1;
+    return numB - numA;
+  });
+
   return (
     <div className="min-h-screen bg-neutral-950 text-white animate-fade-in-up">
       <div className="pt-28 md:pt-32 pb-32 px-4 md:px-12 container mx-auto max-w-[1920px]">
@@ -954,7 +975,7 @@ const ProfileSettings = ({ settings, onUpdate }) => {
     <div className="max-w-3xl mx-auto space-y-8 pb-12">
       <div className="bg-neutral-900 p-6 rounded-xl border border-neutral-800 space-y-6">
         <h3 className="text-lg font-bold text-white flex items-center gap-2">
-          <Globe2 className="w-5 h-5" /> Site Identity & Branding
+          <Globe className="w-5 h-5" /> Site Identity & Branding
         </h3>
         <div className="flex gap-6">
           <div className="w-1/3">
