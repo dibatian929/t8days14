@@ -28,6 +28,7 @@ import {
   Music2,
   ArrowLeft,
   ChevronLeft,
+  Move,
   Eye,
   EyeOff,
   ChevronDown,
@@ -693,12 +694,6 @@ const ImmersiveLightbox = ({
 
   return (
     <div className="fixed inset-0 z-[100] bg-black flex items-center justify-center animate-fade-in">
-      <div className="absolute top-6 left-0 right-0 text-center pointer-events-none z-10">
-        <h2 className="text-xl font-serif text-white/90 tracking-[0.3em] uppercase drop-shadow-lg">
-          {currentImage.project}
-        </h2>
-      </div>
-
       <button
         onClick={onClose}
         className="absolute top-6 right-6 z-50 text-neutral-500 hover:text-white transition-colors p-4"
@@ -723,7 +718,7 @@ const ImmersiveLightbox = ({
         {/* 1. 占位图层 (永远存在，不透明度1，作为底色) */}
         <img
           src={placeholderSrc}
-          className={`${imgClassName} object-contain absolute filter blur-xl scale-105`}
+          className={`${imgClassName} object-contain absolute filter blur-xl scale-105 opacity-50 transition-opacity duration-500`}
           style={{ opacity: 1 }} // 确保占位图始终可见
           alt="placeholder"
         />
